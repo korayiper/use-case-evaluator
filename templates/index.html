@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KI-Anwendungsfälle</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="page-header">
+    <h1>KI-Anwendungsfälle</h1>
+    <button id="toggle-add" class="btn btn-primary" type="button">+ Neuer Anwendungsfall</button>
+  </header>
+
+  <main class="page-content">
+  <section id="add-panel" class="panel" hidden>
+    <h2 id="add-panel-title">Neuer Anwendungsfall</h2>
+    <form id="add-form" novalidate>
+      <div class="field-grid">
+        <div class="field">
+          <label for="f-name">Name</label>
+          <input id="f-name" name="name" type="text" required maxlength="200" placeholder="z. B. Rechnungsdatenerkennung">
+        </div>
+        <div class="field">
+          <label for="f-idea-initiator">Ideengeber</label>
+          <input id="f-idea-initiator" name="idea_initiator" type="text" required maxlength="200" placeholder="z. B. Team Finanzen">
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-description">Beschreibung des Anwendungsfalls <span class="optional">(optional)</span></label>
+        <textarea id="f-description" name="description" rows="2"></textarea>
+      </div>
+      <div class="field">
+        <label for="f-value-added-description">Beschreibung des Mehrwerts <span class="optional">(optional)</span></label>
+        <textarea id="f-value-added-description" name="value_added_description" rows="2"></textarea>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <div class="field-label-row">
+            <label for="f-use-category">Nutzungskategorie</label>
+            <button type="button" class="help-btn" data-help="use_category" hidden>Was bedeutet das?</button>
+          </div>
+          <select id="f-use-category" name="use_category" required></select>
+          <div class="help-panel" id="help-panel-use_category" hidden></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label for="f-value-added">Mehrwert</label>
+            <button type="button" class="help-btn" data-help="value_added" hidden>Was bedeutet das?</button>
+          </div>
+          <select id="f-value-added" name="value_added" required></select>
+          <div class="help-panel" id="help-panel-value_added" hidden></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label for="f-development-time">Entwicklungsdauer</label>
+            <button type="button" class="help-btn" data-help="development_time" hidden>Was bedeutet das?</button>
+          </div>
+          <select id="f-development-time" name="development_time" required></select>
+          <div class="help-panel" id="help-panel-development_time" hidden></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label for="f-process-criticality">Prozesskritikalität</label>
+            <button type="button" class="help-btn" data-help="process_criticality" hidden>Was bedeutet das?</button>
+          </div>
+          <select id="f-process-criticality" name="process_criticality" required></select>
+          <div class="help-panel" id="help-panel-process_criticality" hidden></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label for="f-process-dependency">Prozessabhängigkeit</label>
+            <button type="button" class="help-btn" data-help="process_dependency" hidden>Was bedeutet das?</button>
+          </div>
+          <select id="f-process-dependency" name="process_dependency" required></select>
+          <div class="help-panel" id="help-panel-process_dependency" hidden></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row">
+            <label for="f-ai-feasibility">KI-Umsetzbarkeit</label>
+            <button type="button" class="help-btn" data-help="ai_feasibility" hidden>Was bedeutet das?</button>
+          </div>
+          <select id="f-ai-feasibility" name="ai_feasibility" required></select>
+          <div class="help-panel" id="help-panel-ai_feasibility" hidden></div>
+        </div>
+        <div class="field">
+          <label for="f-golive-date">Go-Live-Datum</label>
+          <input id="f-golive-date" name="golive_date" type="date" required>
+        </div>
+      </div>
+      <p id="form-error" class="form-error" hidden></p>
+      <div class="form-actions">
+        <button type="button" id="cancel-add" class="btn btn-ghost">Abbrechen</button>
+        <button type="submit" id="submit-add" class="btn btn-primary">Anwendungsfall speichern</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Zeitachse</h2>
+      <p class="muted-text">Balken laufen vom geschätzten Projektstart (Go-Live minus Entwicklungsdauer) bis zum Go-Live. Die Farbe zeigt die Nutzungskategorie; die Priorität steht im Tooltip.</p>
+    </div>
+    <div id="timeline-legend" class="timeline-legend"></div>
+    <div class="timeline-scroll">
+      <div id="timeline"></div>
+      <p class="empty-state" id="timeline-empty" hidden>Noch keine Anwendungsfälle vorhanden.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Anwendungsfälle</h2>
+      <p class="muted-text">Auf eine Spaltenüberschrift klicken, um zu sortieren.</p>
+    </div>
+    <div class="table-scroll">
+      <table id="use-case-table">
+        <thead>
+          <tr>
+            <th data-sort="name">Name</th>
+            <th data-sort="idea_initiator">Ideengeber</th>
+            <th data-sort="use_category_label">Nutzungskategorie</th>
+            <th data-sort="value_added_points">Mehrwert</th>
+            <th data-sort="development_time_points">Entwicklungsdauer</th>
+            <th data-sort="process_criticality_points">Prozesskritikalität</th>
+            <th data-sort="process_dependency_points">Prozessabhängigkeit</th>
+            <th data-sort="ai_feasibility_rank">KI-Umsetzbarkeit</th>
+            <th data-sort="priority">Priorität</th>
+            <th data-sort="start_date">Start</th>
+            <th data-sort="golive_date">Go-Live</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="use-case-tbody"></tbody>
+      </table>
+      <p class="empty-state" id="table-empty" hidden>Noch keine Anwendungsfälle vorhanden. Legen Sie den ersten an.</p>
+    </div>
+  </section>
+
+  </main>
+
+  <div id="tooltip" class="tooltip" hidden></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

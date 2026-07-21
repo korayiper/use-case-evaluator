@@ -1,0 +1,12 @@
+[project]
+name = "use-case-evaluator"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.139.2",
+    "jinja2>=3.1.6",
+    "openpyxl>=3.1.5",
+    "requests>=2.34.2",
+    "uvicorn[standard]>=0.51.0",
+]
