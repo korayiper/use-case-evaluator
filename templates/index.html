@@ -98,6 +98,23 @@
 
   <section class="panel">
     <div class="panel-header">
+      <h2>Filter</h2>
+      <p class="muted-text" id="filter-summary"></p>
+    </div>
+    <div class="filter-bar">
+      <input type="search" id="f-search" class="filter-search" placeholder="Name oder Ideengeber suchen…">
+      <div id="filter-use-category"></div>
+      <div id="filter-value-added"></div>
+      <div id="filter-development-time"></div>
+      <div id="filter-process-criticality"></div>
+      <div id="filter-process-dependency"></div>
+      <div id="filter-ai-feasibility"></div>
+      <button type="button" id="reset-filters" class="btn btn-ghost">Filter zurücksetzen</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
       <h2>Zeitachse</h2>
       <p class="muted-text">Balken laufen vom geschätzten Projektstart (Go-Live minus Entwicklungsdauer) bis zum Go-Live. Die Farbe zeigt die Nutzungskategorie; die Priorität steht im Tooltip.</p>
     </div>

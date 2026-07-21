@@ -41,7 +41,28 @@
     sortKey: "priority",
     sortDir: "desc",
     editingId: null,
+    filters: {
+      search: "",
+      use_category: [],
+      value_added: [],
+      development_time: [],
+      process_criticality: [],
+      process_dependency: [],
+      ai_feasibility: [],
+    },
   };
+
+  // toggle/menu element refs per filter key, filled in by buildMultiSelect()
+  const filterUI = {};
+
+  const FILTER_CONFIG = [
+    { id: "filter-use-category", key: "use_category", label: "Nutzungskategorie" },
+    { id: "filter-value-added", key: "value_added", label: "Mehrwert" },
+    { id: "filter-development-time", key: "development_time", label: "Entwicklungsdauer" },
+    { id: "filter-process-criticality", key: "process_criticality", label: "Prozesskritikalität" },
+    { id: "filter-process-dependency", key: "process_dependency", label: "Prozessabhängigkeit" },
+    { id: "filter-ai-feasibility", key: "ai_feasibility", label: "KI-Umsetzbarkeit" },
+  ];
 
   const DEFAULT_DESC = new Set([
     "value_added_points",
@@ -128,6 +149,7 @@
     populateSelect("f-use-category", state.options.use_category, false);
     populateSelect("f-ai-feasibility", state.options.ai_feasibility, true);
     setupHelpPanels();
+    setupFilters();
   }
 
   const HELP_FIELDS = [
@@ -183,6 +205,136 @@
     }
   }
 
+  // ---------- filters ----------
+
+  function closeAllFilterMenus() {
+    document.querySelectorAll(".ms-filter-menu").forEach((m) => (m.hidden = true));
+    document.querySelectorAll(".ms-filter-toggle").forEach((b) => b.classList.remove("active"));
+  }
+
+  function filterToggleLabel(cfg) {
+    const selected = state.filters[cfg.key];
+    if (selected.length === 0) return `${cfg.label}: alle`;
+    if (selected.length === 1) {
+      const opt = state.options[cfg.key].find((o) => o.value === selected[0]);
+      return `${cfg.label}: ${opt ? opt.label : selected[0]}`;
+    }
+    return `${cfg.label}: ${selected.length} ausgewählt`;
+  }
+
+  function buildMultiSelect(cfg) {
+    const container = el(cfg.id);
+    container.className = "ms-filter";
+    container.innerHTML = "";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "ms-filter-toggle";
+    toggle.textContent = filterToggleLabel(cfg);
+    container.appendChild(toggle);
+
+    const menu = document.createElement("div");
+    menu.className = "ms-filter-menu";
+    menu.hidden = true;
+
+    for (const opt of state.options[cfg.key]) {
+      const label = document.createElement("label");
+      label.className = "ms-filter-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = opt.value;
+      checkbox.addEventListener("change", () => {
+        const selected = state.filters[cfg.key];
+        state.filters[cfg.key] = checkbox.checked
+          ? [...selected, opt.value]
+          : selected.filter((v) => v !== opt.value);
+        toggle.textContent = filterToggleLabel(cfg);
+        render();
+      });
+      label.append(checkbox, document.createTextNode(opt.label));
+      menu.appendChild(label);
+    }
+
+    const footer = document.createElement("div");
+    footer.className = "ms-filter-footer";
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.textContent = "Zurücksetzen";
+    clearBtn.addEventListener("click", () => {
+      state.filters[cfg.key] = [];
+      menu.querySelectorAll("input[type=checkbox]").forEach((cb) => (cb.checked = false));
+      toggle.textContent = filterToggleLabel(cfg);
+      render();
+    });
+    footer.appendChild(clearBtn);
+    menu.appendChild(footer);
+    container.appendChild(menu);
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const wasOpen = !menu.hidden;
+      closeAllFilterMenus();
+      if (!wasOpen) {
+        menu.hidden = false;
+        toggle.classList.add("active");
+      }
+    });
+
+    filterUI[cfg.key] = { toggle, menu };
+  }
+
+  function setupFilters() {
+    for (const cfg of FILTER_CONFIG) {
+      buildMultiSelect(cfg);
+    }
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".ms-filter")) closeAllFilterMenus();
+    });
+
+    el("f-search").addEventListener("input", (e) => {
+      state.filters.search = e.target.value;
+      render();
+    });
+
+    el("reset-filters").addEventListener("click", () => {
+      state.filters.search = "";
+      el("f-search").value = "";
+      for (const cfg of FILTER_CONFIG) {
+        state.filters[cfg.key] = [];
+        const { toggle, menu } = filterUI[cfg.key];
+        menu.querySelectorAll("input[type=checkbox]").forEach((cb) => (cb.checked = false));
+        toggle.textContent = filterToggleLabel(cfg);
+      }
+      render();
+    });
+  }
+
+  function filteredUseCases() {
+    const { search, ...selectFilters } = state.filters;
+    const term = search.trim().toLowerCase();
+    return state.useCases.filter((uc) => {
+      if (term && !`${uc.name} ${uc.idea_initiator}`.toLowerCase().includes(term)) return false;
+      for (const [key, values] of Object.entries(selectFilters)) {
+        if (values.length && !values.includes(uc[key])) return false;
+      }
+      return true;
+    });
+  }
+
+  function updateFilterSummary() {
+    const total = state.useCases.length;
+    const shown = filteredUseCases().length;
+    el("filter-summary").textContent =
+      total === shown ? `${total} Anwendungsfälle` : `${shown} von ${total} Anwendungsfällen`;
+  }
+
+  function emptyStateText() {
+    return state.useCases.length === 0
+      ? "Noch keine Anwendungsfälle vorhanden."
+      : "Keine Anwendungsfälle entsprechen den gewählten Filtern.";
+  }
+
   async function loadUseCases() {
     const res = await fetch("/api/use-cases");
     state.useCases = await res.json();
@@ -194,7 +346,7 @@
   function sortedUseCases() {
     const { sortKey, sortDir } = state;
     const factor = sortDir === "asc" ? 1 : -1;
-    return [...state.useCases].sort((a, b) => {
+    return filteredUseCases().sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
       if (av < bv) return -1 * factor;
@@ -204,6 +356,7 @@
   }
 
   function render() {
+    updateFilterSummary();
     renderTable();
     renderTimeline();
   }
@@ -239,7 +392,9 @@
     }
 
     const rows = sortedUseCases();
-    el("table-empty").hidden = rows.length > 0;
+    const tableEmpty = el("table-empty");
+    tableEmpty.hidden = rows.length > 0;
+    tableEmpty.textContent = emptyStateText();
 
     const { min_priority: minP, max_priority: maxP, ...opts } = state.options;
 
@@ -353,7 +508,9 @@
     container.innerHTML = "";
 
     const rows = sortedUseCases();
-    el("timeline-empty").hidden = rows.length > 0;
+    const timelineEmpty = el("timeline-empty");
+    timelineEmpty.hidden = rows.length > 0;
+    timelineEmpty.textContent = emptyStateText();
     renderLegend();
     if (rows.length === 0) {
       return;
