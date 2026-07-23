@@ -43,10 +43,10 @@ class UseCaseCreate(BaseModel):
     process_criticality: ProcessCriticality
     process_dependency: ProcessDependency
     golive_date: date
-    depends_on: list[int] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
 
 
-def _validate_dependencies(use_case_id: int | None, depends_on_ids: list[int]) -> None:
+def _validate_dependencies(use_case_id: str | None, depends_on_ids: list[str]) -> None:
     if use_case_id is not None and use_case_id in depends_on_ids:
         raise HTTPException(status_code=400, detail="Ein Anwendungsfall kann nicht von sich selbst abhängen.")
     if len(set(depends_on_ids)) != len(depends_on_ids):
@@ -97,7 +97,7 @@ def api_create_use_case(payload: UseCaseCreate):
 
 
 @app.put("/api/use-cases/{use_case_id}")
-def api_update_use_case(use_case_id: int, payload: UseCaseCreate):
+def api_update_use_case(use_case_id: str, payload: UseCaseCreate):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
     _validate_dependencies(use_case_id, payload.depends_on)
@@ -120,7 +120,7 @@ def api_update_use_case(use_case_id: int, payload: UseCaseCreate):
 
 
 @app.delete("/api/use-cases/{use_case_id}")
-def api_delete_use_case(use_case_id: int):
+def api_delete_use_case(use_case_id: str):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
     db.delete_use_case(use_case_id)

@@ -1,4 +1,5 @@
 import sqlite3
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -42,6 +43,12 @@ def get_connection():
     return conn
 
 
+# ids are client-generated UUIDs (str(uuid.uuid4())), not DB auto-increment/
+# IDENTITY. This sidesteps retrieving a DB-generated id after INSERT
+# entirely (no lastrowid/SCOPE_IDENTITY()/OUTPUT-clause dance, no
+# backend-specific code for it) - the id is known before the INSERT even
+# runs, identically on every backend.
+#
 # No ON DELETE CASCADE here on purpose: use_case_dependencies references
 # use_cases twice (use_case_id and depends_on_id). SQL Server refuses to
 # create two cascading FKs to the same table from the same table ("may cause
@@ -51,7 +58,7 @@ def get_connection():
 SQLITE_SCHEMA = [
     """
     CREATE TABLE IF NOT EXISTS use_cases (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         idea_initiator TEXT NOT NULL,
         description TEXT,
@@ -68,8 +75,8 @@ SQLITE_SCHEMA = [
     """,
     """
     CREATE TABLE IF NOT EXISTS use_case_dependencies (
-        use_case_id INTEGER NOT NULL,
-        depends_on_id INTEGER NOT NULL,
+        use_case_id TEXT NOT NULL,
+        depends_on_id TEXT NOT NULL,
         PRIMARY KEY (use_case_id, depends_on_id),
         FOREIGN KEY (use_case_id) REFERENCES use_cases(id),
         FOREIGN KEY (depends_on_id) REFERENCES use_cases(id)
@@ -81,7 +88,7 @@ MSSQL_SCHEMA = [
     """
     IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.use_cases') AND type = N'U')
     CREATE TABLE dbo.use_cases (
-        id INT IDENTITY(1,1) PRIMARY KEY,
+        id NVARCHAR(36) PRIMARY KEY,
         name NVARCHAR(200) NOT NULL,
         idea_initiator NVARCHAR(200) NOT NULL,
         description NVARCHAR(MAX),
@@ -101,8 +108,8 @@ MSSQL_SCHEMA = [
         SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.use_case_dependencies') AND type = N'U'
     )
     CREATE TABLE dbo.use_case_dependencies (
-        use_case_id INT NOT NULL,
-        depends_on_id INT NOT NULL,
+        use_case_id NVARCHAR(36) NOT NULL,
+        depends_on_id NVARCHAR(36) NOT NULL,
         CONSTRAINT PK_use_case_dependencies PRIMARY KEY (use_case_id, depends_on_id),
         CONSTRAINT FK_use_case_dependencies_use_case FOREIGN KEY (use_case_id) REFERENCES dbo.use_cases(id),
         CONSTRAINT FK_use_case_dependencies_depends_on FOREIGN KEY (depends_on_id) REFERENCES dbo.use_cases(id)
@@ -129,19 +136,13 @@ def _row_as_dict(cursor) -> dict | None:
     return dict(zip(columns, row)) if row else None
 
 
-def _last_insert_id(conn, cursor) -> int:
-    if DB_BACKEND == "mssql":
-        return int(conn.execute("SELECT SCOPE_IDENTITY() AS id").fetchone()[0])
-    return cursor.lastrowid
-
-
-def existing_ids() -> set[int]:
+def existing_ids() -> set[str]:
     with get_connection() as conn:
         rows = _rows_as_dicts(conn.execute("SELECT id FROM use_cases"))
     return {r["id"] for r in rows}
 
 
-def _set_dependencies(conn, use_case_id: int, depends_on_ids: list[int]) -> None:
+def _set_dependencies(conn, use_case_id: str, depends_on_ids: list[str]) -> None:
     """Replace use_case_id's outgoing dependency edges. Runs on the caller's
     open connection so it's atomic with the row insert/update."""
     conn.execute("DELETE FROM use_case_dependencies WHERE use_case_id = ?", (use_case_id,))
@@ -152,17 +153,17 @@ def _set_dependencies(conn, use_case_id: int, depends_on_ids: list[int]) -> None
         )
 
 
-def _all_dependencies() -> dict[int, list[int]]:
+def _all_dependencies() -> dict[str, list[str]]:
     """use_case_id -> list of its prerequisite ids, for every use case."""
     with get_connection() as conn:
         rows = _rows_as_dicts(conn.execute("SELECT use_case_id, depends_on_id FROM use_case_dependencies"))
-    graph: dict[int, list[int]] = {}
+    graph: dict[str, list[str]] = {}
     for r in rows:
         graph.setdefault(r["use_case_id"], []).append(r["depends_on_id"])
     return graph
 
 
-def has_cycle(use_case_id: int | None, depends_on_ids: list[int]) -> bool:
+def has_cycle(use_case_id: str | None, depends_on_ids: list[str]) -> bool:
     """True if replacing use_case_id's outgoing edges with depends_on_ids would
     create a cycle. use_case_id is None for a not-yet-created use case (which
     can never be part of an existing cycle, since nothing can already
@@ -195,16 +196,18 @@ def add_use_case(
     process_dependency,
     golive_date,
     depends_on_ids=None,
-):
+) -> str:
+    use_case_id = str(uuid.uuid4())
     with get_connection() as conn:
-        cur = conn.execute(
+        conn.execute(
             """
             INSERT INTO use_cases
-                (name, idea_initiator, description, value_added_description, use_category, ai_feasibility,
+                (id, name, idea_initiator, description, value_added_description, use_category, ai_feasibility,
                  value_added, development_time, process_criticality, process_dependency, golive_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                use_case_id,
                 name,
                 idea_initiator,
                 description,
@@ -218,7 +221,6 @@ def add_use_case(
                 golive_date,
             ),
         )
-        use_case_id = _last_insert_id(conn, cur)
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
     return use_case_id
 
@@ -265,7 +267,7 @@ def update_use_case(
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
 
 
-def get_use_case(use_case_id: int) -> dict | None:
+def get_use_case(use_case_id: str) -> dict | None:
     with get_connection() as conn:
         row = _row_as_dict(conn.execute("SELECT * FROM use_cases WHERE id = ?", (use_case_id,)))
         if not row:
@@ -285,7 +287,7 @@ def get_use_case(use_case_id: int) -> dict | None:
     return _enrich(row, [r["depends_on_id"] for r in dep_rows], [r["name"] for r in dep_rows])
 
 
-def delete_use_case(use_case_id: int) -> None:
+def delete_use_case(use_case_id: str) -> None:
     with get_connection() as conn:
         conn.execute(
             "DELETE FROM use_case_dependencies WHERE use_case_id = ? OR depends_on_id = ?",
@@ -294,7 +296,7 @@ def delete_use_case(use_case_id: int) -> None:
         conn.execute("DELETE FROM use_cases WHERE id = ?", (use_case_id,))
 
 
-def _enrich(row: dict, depends_on_ids: list[int], depends_on_names: list[str]) -> dict:
+def _enrich(row: dict, depends_on_ids: list[str], depends_on_names: list[str]) -> dict:
     d = dict(row)
     months = scoring.development_months(d["development_time"])
     golive = date.fromisoformat(d["golive_date"])
@@ -340,8 +342,8 @@ def list_use_cases() -> list[dict]:
                 """
             )
         )
-    ids_map: dict[int, list[int]] = {}
-    names_map: dict[int, list[str]] = {}
+    ids_map: dict[str, list[str]] = {}
+    names_map: dict[str, list[str]] = {}
     for r in dep_rows:
         ids_map.setdefault(r["use_case_id"], []).append(r["depends_on_id"])
         names_map.setdefault(r["use_case_id"], []).append(r["name"])
