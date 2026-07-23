@@ -150,6 +150,20 @@ h2 { font-size: 1.0625rem; }
 }
 .ms-filter-footer button:hover { color: var(--text-primary); }
 
+/* Dependency picker fills the field width in the vertical form layout */
+.field .ms-filter-toggle { width: 100%; }
+.field .ms-filter-menu { width: 100%; min-width: 0; }
+
+/* Dependency graph */
+.graph-scroll { overflow-x: auto; }
+.dependency-graph { display: block; font-family: inherit; }
+.dep-node-rect { cursor: default; }
+.dep-node:hover .dep-node-rect { stroke: var(--series-1); stroke-width: 2px; }
+.dep-node-rect.is-backlog { stroke: var(--text-muted); stroke-width: 1.5px; stroke-dasharray: 4 3; opacity: 0.6; }
+.dep-node-label { font-size: 11px; font-weight: 500; pointer-events: none; }
+.dep-edge { fill: none; stroke: var(--baseline); stroke-width: 1.5px; }
+.dep-arrow-head { fill: var(--baseline); }
+
 .btn {
   font: inherit;
   font-weight: 500;
@@ -333,6 +347,19 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
   position: relative;
   min-width: 720px;
 }
+
+.timeline-backlog {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--gridline);
+}
+.backlog-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.backlog-chip { border: 1.5px dashed var(--text-muted); opacity: 0.85; cursor: default; }
 .timeline-axis {
   position: relative;
   height: 24px;

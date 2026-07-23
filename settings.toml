@@ -1,0 +1,16 @@
+# Non-secret configuration. Credentials go in .secrets.toml instead (see
+# .secrets.toml.example) - never put a password or connection string here.
+#
+# Active section is chosen by ENV_FOR_DYNACONF (default "development").
+# [default] is always merged in underneath whichever section is active.
+
+[default]
+db_backend = "sqlite"
+sqlite_path = "usecases.db"
+
+[development]
+db_backend = "sqlite"
+
+[production]
+db_backend = "mssql"
+mssql_driver = "ODBC Driver 18 for SQL Server"

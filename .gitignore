@@ -3,3 +3,4 @@ __pycache__/
 .venv/
 usecases.db
 /.idea
+.secrets.toml

@@ -41,6 +41,7 @@
     sortKey: "priority",
     sortDir: "desc",
     editingId: null,
+    formDependsOn: [],
     filters: {
       search: "",
       use_category: [],
@@ -222,34 +223,36 @@
     return `${cfg.label}: ${selected.length} ausgewählt`;
   }
 
-  function buildMultiSelect(cfg) {
-    const container = el(cfg.id);
+  // Generic checkbox-dropdown builder, shared by the filter bar and the
+  // dependency picker. Selection state lives with the caller (via the
+  // isSelected/onToggle/onClear callbacks) rather than in this function, so
+  // it has no opinion on what's being selected. The change handler passes
+  // back `opt.value` (the closed-over original, possibly-numeric value),
+  // never `checkbox.value` (which DOM-stringifies it) - callers that compare
+  // ids with strict equality (like dependency ids) depend on this.
+  function buildCheckboxDropdown(container, { options, isSelected, onToggle, onClear, toggleLabel }) {
     container.className = "ms-filter";
     container.innerHTML = "";
 
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "ms-filter-toggle";
-    toggle.textContent = filterToggleLabel(cfg);
+    toggle.textContent = toggleLabel();
     container.appendChild(toggle);
 
     const menu = document.createElement("div");
     menu.className = "ms-filter-menu";
     menu.hidden = true;
 
-    for (const opt of state.options[cfg.key]) {
+    for (const opt of options) {
       const label = document.createElement("label");
       label.className = "ms-filter-option";
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.value = opt.value;
+      checkbox.checked = isSelected(opt.value);
       checkbox.addEventListener("change", () => {
-        const selected = state.filters[cfg.key];
-        state.filters[cfg.key] = checkbox.checked
-          ? [...selected, opt.value]
-          : selected.filter((v) => v !== opt.value);
-        toggle.textContent = filterToggleLabel(cfg);
-        render();
+        onToggle(opt.value, checkbox.checked);
+        toggle.textContent = toggleLabel();
       });
       label.append(checkbox, document.createTextNode(opt.label));
       menu.appendChild(label);
@@ -261,10 +264,9 @@
     clearBtn.type = "button";
     clearBtn.textContent = "Zurücksetzen";
     clearBtn.addEventListener("click", () => {
-      state.filters[cfg.key] = [];
+      onClear();
       menu.querySelectorAll("input[type=checkbox]").forEach((cb) => (cb.checked = false));
-      toggle.textContent = filterToggleLabel(cfg);
-      render();
+      toggle.textContent = toggleLabel();
     });
     footer.appendChild(clearBtn);
     menu.appendChild(footer);
@@ -280,7 +282,45 @@
       }
     });
 
-    filterUI[cfg.key] = { toggle, menu };
+    return { toggle, menu };
+  }
+
+  function buildMultiSelect(cfg) {
+    filterUI[cfg.key] = buildCheckboxDropdown(el(cfg.id), {
+      options: state.options[cfg.key],
+      isSelected: (v) => state.filters[cfg.key].includes(v),
+      onToggle: (v, checked) => {
+        state.filters[cfg.key] = checked
+          ? [...state.filters[cfg.key], v]
+          : state.filters[cfg.key].filter((x) => x !== v);
+        render();
+      },
+      onClear: () => {
+        state.filters[cfg.key] = [];
+        render();
+      },
+      toggleLabel: () => filterToggleLabel(cfg),
+    });
+  }
+
+  function buildDependencyPicker() {
+    buildCheckboxDropdown(el("f-depends-on"), {
+      options: state.useCases
+        .filter((uc) => uc.id !== state.editingId)
+        .map((uc) => ({ value: uc.id, label: uc.name }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+      isSelected: (v) => state.formDependsOn.includes(v),
+      onToggle: (v, checked) => {
+        state.formDependsOn = checked
+          ? [...state.formDependsOn, v]
+          : state.formDependsOn.filter((x) => x !== v);
+      },
+      onClear: () => {
+        state.formDependsOn = [];
+      },
+      toggleLabel: () =>
+        state.formDependsOn.length === 0 ? "Keine Abhängigkeiten" : `${state.formDependsOn.length} ausgewählt`,
+    });
   }
 
   function setupFilters() {
@@ -359,6 +399,7 @@
     updateFilterSummary();
     renderTable();
     renderTimeline();
+    renderGraph();
   }
 
   // ---------- table ----------
@@ -443,12 +484,33 @@
       tr.appendChild(priorityTd);
 
       const startTd = document.createElement("td");
-      startTd.textContent = formatDate(uc.start_date);
+      if (uc.is_backlog) {
+        const backlogChip = document.createElement("span");
+        backlogChip.className = "chip backlog-chip";
+        const bg = categoryColor(uc.use_category);
+        backlogChip.style.background = bg;
+        backlogChip.style.color = textColorFor(bg);
+        backlogChip.textContent = "Backlog";
+        backlogChip.title = "Start nach 2030 (Mehrwert und/oder KI-Umsetzbarkeit sind Tief)";
+        startTd.appendChild(backlogChip);
+      } else {
+        startTd.textContent = formatDate(uc.start_date);
+      }
       tr.appendChild(startTd);
 
       const goliveTd = document.createElement("td");
       goliveTd.textContent = formatDate(uc.golive_date);
       tr.appendChild(goliveTd);
+
+      const dependsTd = document.createElement("td");
+      if (uc.depends_on_names.length) {
+        dependsTd.textContent = uc.depends_on_names.join(", ");
+        dependsTd.title = dependsTd.textContent;
+      } else {
+        dependsTd.textContent = "–";
+        dependsTd.className = "muted-text";
+      }
+      tr.appendChild(dependsTd);
 
       const actionsTd = document.createElement("td");
       const editBtn = document.createElement("button");
@@ -512,12 +574,14 @@
     timelineEmpty.hidden = rows.length > 0;
     timelineEmpty.textContent = emptyStateText();
     renderLegend();
-    if (rows.length === 0) {
+    renderBacklogList(rows.filter((uc) => uc.is_backlog));
+    const scheduled = rows.filter((uc) => !uc.is_backlog);
+    if (scheduled.length === 0) {
       return;
     }
 
-    let rangeStart = new Date(Math.min(...rows.map((r) => new Date(r.start_date))));
-    let rangeEnd = new Date(Math.max(...rows.map((r) => new Date(r.golive_date))));
+    let rangeStart = new Date(Math.min(...scheduled.map((r) => new Date(r.start_date))));
+    let rangeEnd = new Date(Math.max(...scheduled.map((r) => new Date(r.golive_date))));
     const padDays = Math.max(14, Math.round((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24) * 0.04));
     rangeStart = new Date(rangeStart.getTime() - padDays * 86400000);
     rangeEnd = new Date(rangeEnd.getTime() + padDays * 86400000);
@@ -554,11 +618,11 @@
       todayLine = document.createElement("div");
       todayLine.className = "timeline-today";
       todayLine.style.left = `${scaleX(today)}px`;
-      todayLine.style.height = `${rows.length * 30}px`;
+      todayLine.style.height = `${scheduled.length * 30}px`;
       todayLine.title = "Heute";
     }
 
-    for (const uc of rows) {
+    for (const uc of scheduled) {
       const row = document.createElement("div");
       row.className = "timeline-row";
 
@@ -597,6 +661,31 @@
     if (todayLine) grid.appendChild(todayLine);
   }
 
+  // Backlog items have no real schedule (their start_date is a sentinel, not
+  // a plan) - showing them as a duration bar on the date scale is misleading
+  // (produces an unreadable sliver) and drags the whole scale out to 2030.
+  // They get their own always-visible chip list instead, off the date axis.
+  function renderBacklogList(backlogRows) {
+    const section = el("timeline-backlog");
+    const list = el("timeline-backlog-list");
+    list.innerHTML = "";
+    section.hidden = backlogRows.length === 0;
+    if (backlogRows.length === 0) return;
+
+    for (const uc of backlogRows) {
+      const chip = document.createElement("span");
+      chip.className = "chip backlog-chip";
+      const bg = categoryColor(uc.use_category);
+      chip.style.background = bg;
+      chip.style.color = textColorFor(bg);
+      chip.textContent = uc.name;
+      chip.addEventListener("mouseenter", (e) => showTooltip(e, uc));
+      chip.addEventListener("mousemove", (e) => moveTooltip(e));
+      chip.addEventListener("mouseleave", hideTooltip);
+      list.appendChild(chip);
+    }
+  }
+
   function renderLegend() {
     const legend = el("timeline-legend");
     legend.innerHTML = "";
@@ -633,6 +722,7 @@
     const lines = [
       `Ideengeber: ${uc.idea_initiator}`,
       `Priorität: ${uc.priority}`,
+      ...(uc.is_backlog ? ["Status: Backlog"] : []),
       `Mehrwert: ${uc.value_added_label} (${uc.value_added_points}p)`,
       `Entwicklungsdauer: ${uc.development_time_label} (${uc.development_time_points}p)`,
       `Prozesskritikalität: ${uc.process_criticality_label} (${uc.process_criticality_points}p)`,
@@ -643,6 +733,7 @@
     ];
     if (uc.description) lines.push(`Beschreibung: ${uc.description}`);
     if (uc.value_added_description) lines.push(`Mehrwertbeschreibung: ${uc.value_added_description}`);
+    if (uc.depends_on_names.length) lines.push(`Abhängig von: ${uc.depends_on_names.join(", ")}`);
     for (const line of lines) {
       const p = document.createElement("div");
       p.textContent = line;
@@ -667,6 +758,220 @@
     el("tooltip").hidden = true;
   }
 
+  // ---------- dependency graph ----------
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const GRAPH_COL_WIDTH = 220;
+  const GRAPH_ROW_HEIGHT = 64;
+  const GRAPH_NODE_W = 160;
+  const GRAPH_NODE_H = 36;
+  const GRAPH_MARGIN = 24;
+  const GRAPH_COMPONENT_GAP = GRAPH_ROW_HEIGHT / 2;
+
+  function svgEl(tag, attrs = {}) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    return node;
+  }
+
+  function nodesWithEdges() {
+    const ids = new Set();
+    for (const uc of state.useCases) {
+      if (uc.depends_on.length) {
+        ids.add(uc.id);
+        for (const dep of uc.depends_on) ids.add(dep);
+      }
+    }
+    return ids;
+  }
+
+  // level(root) = 0; level(x) = 1 + max(level(prerequisite)) over x's
+  // depends_on. The `visiting` guard is defensive only - the server prevents
+  // cycles, so it should never trigger in practice.
+  function computeLevels(nodeIds, edgesByTarget) {
+    const levels = new Map();
+    const visiting = new Set();
+    function levelOf(id) {
+      if (levels.has(id)) return levels.get(id);
+      if (visiting.has(id)) return 0;
+      visiting.add(id);
+      const preqs = edgesByTarget.get(id) || [];
+      const level = preqs.length === 0 ? 0 : 1 + Math.max(...preqs.map(levelOf));
+      visiting.delete(id);
+      levels.set(id, level);
+      return level;
+    }
+    for (const id of nodeIds) levelOf(id);
+    return levels;
+  }
+
+  // Weakly-connected components (edge direction ignored) among nodeIds, so
+  // unrelated dependency chains never share a row/column just because they
+  // happen to have the same length - each chain gets grouped and stacked as
+  // its own block, still left-to-right within itself.
+  function computeComponents(nodeIds, edgesByTarget) {
+    const adjacency = new Map();
+    for (const id of nodeIds) adjacency.set(id, new Set());
+    for (const [target, sources] of edgesByTarget) {
+      for (const source of sources) {
+        adjacency.get(target).add(source);
+        adjacency.get(source).add(target);
+      }
+    }
+    const seen = new Set();
+    const components = [];
+    for (const id of nodeIds) {
+      if (seen.has(id)) continue;
+      const component = [];
+      const stack = [id];
+      seen.add(id);
+      while (stack.length) {
+        const node = stack.pop();
+        component.push(node);
+        for (const neighbor of adjacency.get(node)) {
+          if (!seen.has(neighbor)) {
+            seen.add(neighbor);
+            stack.push(neighbor);
+          }
+        }
+      }
+      components.push(component);
+    }
+    return components;
+  }
+
+  function edgePath(from, to) {
+    const x1 = from.x + GRAPH_NODE_W / 2;
+    const y1 = from.y;
+    const x2 = to.x - GRAPH_NODE_W / 2;
+    const y2 = to.y;
+    const dx = Math.max(40, (x2 - x1) / 2);
+    return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+  }
+
+  function truncateLabel(name, max = 22) {
+    return name.length > max ? name.slice(0, max - 1) + "…" : name;
+  }
+
+  function renderGraph() {
+    const svg = el("dependency-graph");
+    Array.from(svg.children).forEach((c) => {
+      if (c.tagName !== "defs") c.remove();
+    });
+
+    const nodeIds = nodesWithEdges();
+    const byId = new Map(state.useCases.map((uc) => [uc.id, uc]));
+    const hasBacklogNode = [...nodeIds].some((id) => byId.get(id).is_backlog);
+    el("dependency-summary").textContent = hasBacklogNode
+      ? `${nodeIds.size} von ${state.useCases.length} Anwendungsfällen haben Abhängigkeiten · gestrichelter Rahmen = Backlog`
+      : `${nodeIds.size} von ${state.useCases.length} Anwendungsfällen haben Abhängigkeiten`;
+    const emptyEl = el("dependency-empty");
+    emptyEl.hidden = nodeIds.size > 0;
+    if (nodeIds.size === 0) {
+      svg.setAttribute("width", 0);
+      svg.setAttribute("height", 0);
+      return;
+    }
+
+    const edgesByTarget = new Map(
+      [...nodeIds].map((id) => [id, byId.get(id).depends_on.filter((d) => nodeIds.has(d))])
+    );
+
+    // Group into connected components first, and lay out each as its own
+    // block, stacked vertically - so unrelated dependency chains never end
+    // up sharing a row/column just because they're the same length. Every
+    // block still starts at the same left edge, so each chain reads
+    // left-to-right on its own.
+    const components = computeComponents(nodeIds, edgesByTarget);
+    components.sort((a, b) => {
+      if (b.length !== a.length) return b.length - a.length;
+      const nameOf = (component) => component.map((id) => byId.get(id).name).sort()[0];
+      return nameOf(a).localeCompare(nameOf(b));
+    });
+
+    const positions = new Map();
+    let maxLevelOverall = 0;
+    let yCursor = GRAPH_MARGIN + GRAPH_NODE_H / 2;
+    for (const component of components) {
+      const levels = computeLevels(component, edgesByTarget);
+      const byLevel = new Map();
+      for (const id of component) {
+        const lvl = levels.get(id);
+        if (!byLevel.has(lvl)) byLevel.set(lvl, []);
+        byLevel.get(lvl).push(id);
+      }
+      for (const ids of byLevel.values()) ids.sort((a, b) => byId.get(a).name.localeCompare(byId.get(b).name));
+
+      maxLevelOverall = Math.max(maxLevelOverall, ...byLevel.keys());
+      const componentRows = Math.max(...[...byLevel.values()].map((ids) => ids.length));
+
+      for (const [lvl, ids] of byLevel) {
+        ids.forEach((id, i) =>
+          positions.set(id, {
+            x: GRAPH_MARGIN + GRAPH_NODE_W / 2 + lvl * GRAPH_COL_WIDTH,
+            y: yCursor + i * GRAPH_ROW_HEIGHT,
+          })
+        );
+      }
+      yCursor += componentRows * GRAPH_ROW_HEIGHT + GRAPH_COMPONENT_GAP;
+    }
+
+    const width = GRAPH_MARGIN * 2 + GRAPH_NODE_W + maxLevelOverall * GRAPH_COL_WIDTH;
+    const height = yCursor - GRAPH_COMPONENT_GAP + GRAPH_NODE_H / 2 + GRAPH_MARGIN;
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+    const edgeGroup = svgEl("g", { class: "dep-edges" });
+    for (const id of nodeIds) {
+      const uc = byId.get(id);
+      const to = positions.get(id);
+      for (const depId of uc.depends_on) {
+        if (!nodeIds.has(depId)) continue;
+        edgeGroup.appendChild(
+          svgEl("path", {
+            class: "dep-edge",
+            d: edgePath(positions.get(depId), to),
+            "marker-end": "url(#dep-arrow)",
+          })
+        );
+      }
+    }
+    svg.appendChild(edgeGroup);
+
+    const nodeGroup = svgEl("g", { class: "dep-nodes" });
+    for (const id of nodeIds) {
+      const uc = byId.get(id);
+      const { x, y } = positions.get(id);
+      const fill = categoryColor(uc.use_category);
+      const g = svgEl("g", { class: uc.is_backlog ? "dep-node is-backlog" : "dep-node" });
+      const rect = svgEl("rect", {
+        class: uc.is_backlog ? "dep-node-rect is-backlog" : "dep-node-rect",
+        x: x - GRAPH_NODE_W / 2,
+        y: y - GRAPH_NODE_H / 2,
+        width: GRAPH_NODE_W,
+        height: GRAPH_NODE_H,
+        rx: 6,
+        fill,
+      });
+      const text = svgEl("text", {
+        class: "dep-node-label",
+        x,
+        y,
+        "text-anchor": "middle",
+        "dominant-baseline": "middle",
+        fill: textColorFor(fill),
+      });
+      text.textContent = truncateLabel(uc.name);
+      g.append(rect, text);
+      g.addEventListener("mouseenter", (e) => showTooltip(e, uc));
+      g.addEventListener("mousemove", moveTooltip);
+      g.addEventListener("mouseleave", hideTooltip);
+      nodeGroup.appendChild(g);
+    }
+    svg.appendChild(nodeGroup);
+  }
+
   // ---------- form ----------
 
   function closePanel() {
@@ -675,21 +980,25 @@
     el("add-form").reset();
     el("form-error").hidden = true;
     state.editingId = null;
+    state.formDependsOn = [];
   }
 
   function openAddForm() {
     state.editingId = null;
+    state.formDependsOn = [];
     el("add-form").reset();
     el("form-error").hidden = true;
     el("add-panel-title").textContent = "Neuer Anwendungsfall";
     el("submit-add").textContent = "Anwendungsfall speichern";
     el("add-panel").hidden = false;
+    buildDependencyPicker();
     el("f-name").focus();
   }
 
   function openEditForm(uc) {
     const form = el("add-form");
     state.editingId = uc.id;
+    state.formDependsOn = [...uc.depends_on];
     el("form-error").hidden = true;
     form.name.value = uc.name;
     form.idea_initiator.value = uc.idea_initiator;
@@ -706,6 +1015,7 @@
     el("submit-add").textContent = "Änderungen speichern";
     const panel = el("add-panel");
     panel.hidden = false;
+    buildDependencyPicker();
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
     el("f-name").focus();
   }
@@ -739,6 +1049,7 @@
         process_criticality: form.process_criticality.value,
         process_dependency: form.process_dependency.value,
         golive_date: form.golive_date.value,
+        depends_on: state.formDependsOn,
       };
 
       const isEditing = state.editingId !== null;
@@ -754,7 +1065,9 @@
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         errorEl.textContent = body.detail
-          ? JSON.stringify(body.detail)
+          ? typeof body.detail === "string"
+            ? body.detail
+            : JSON.stringify(body.detail)
           : "Der Anwendungsfall konnte nicht gespeichert werden. Bitte Eingaben prüfen.";
         errorEl.hidden = false;
         return;

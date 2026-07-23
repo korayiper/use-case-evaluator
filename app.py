@@ -43,6 +43,22 @@ class UseCaseCreate(BaseModel):
     process_criticality: ProcessCriticality
     process_dependency: ProcessDependency
     golive_date: date
+    depends_on: list[int] = Field(default_factory=list)
+
+
+def _validate_dependencies(use_case_id: int | None, depends_on_ids: list[int]) -> None:
+    if use_case_id is not None and use_case_id in depends_on_ids:
+        raise HTTPException(status_code=400, detail="Ein Anwendungsfall kann nicht von sich selbst abhängen.")
+    if len(set(depends_on_ids)) != len(depends_on_ids):
+        raise HTTPException(status_code=400, detail="Abhängigkeiten dürfen nicht doppelt angegeben werden.")
+    unknown = set(depends_on_ids) - db.existing_ids()
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte Abhängigkeit(en): {', '.join(str(i) for i in sorted(unknown))}",
+        )
+    if db.has_cycle(use_case_id, depends_on_ids):
+        raise HTTPException(status_code=400, detail="Diese Abhängigkeit würde einen Zyklus erzeugen.")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -62,6 +78,7 @@ def api_list_use_cases():
 
 @app.post("/api/use-cases", status_code=201)
 def api_create_use_case(payload: UseCaseCreate):
+    _validate_dependencies(None, payload.depends_on)
     db.add_use_case(
         name=payload.name,
         idea_initiator=payload.idea_initiator,
@@ -74,6 +91,7 @@ def api_create_use_case(payload: UseCaseCreate):
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
         golive_date=payload.golive_date.isoformat(),
+        depends_on_ids=payload.depends_on,
     )
     return {"status": "created"}
 
@@ -82,6 +100,7 @@ def api_create_use_case(payload: UseCaseCreate):
 def api_update_use_case(use_case_id: int, payload: UseCaseCreate):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
+    _validate_dependencies(use_case_id, payload.depends_on)
     db.update_use_case(
         use_case_id,
         name=payload.name,
@@ -95,6 +114,7 @@ def api_update_use_case(use_case_id: int, payload: UseCaseCreate):
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
         golive_date=payload.golive_date.isoformat(),
+        depends_on_ids=payload.depends_on,
     )
     return {"status": "updated"}
 

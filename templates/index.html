@@ -34,6 +34,10 @@
         <label for="f-value-added-description">Beschreibung des Mehrwerts <span class="optional">(optional)</span></label>
         <textarea id="f-value-added-description" name="value_added_description" rows="2"></textarea>
       </div>
+      <div class="field">
+        <label for="f-depends-on">Abhängig von <span class="optional">(optional)</span></label>
+        <div id="f-depends-on"></div>
+      </div>
       <div class="field-grid">
         <div class="field">
           <div class="field-label-row">
@@ -123,6 +127,28 @@
       <div id="timeline"></div>
       <p class="empty-state" id="timeline-empty" hidden>Noch keine Anwendungsfälle vorhanden.</p>
     </div>
+    <div id="timeline-backlog" class="timeline-backlog" hidden>
+      <p class="muted-text">Backlog <span class="optional">(Start nach 2030)</span></p>
+      <div id="timeline-backlog-list" class="backlog-chip-list"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Abhängigkeiten</h2>
+      <p class="muted-text" id="dependency-summary"></p>
+    </div>
+    <div class="graph-scroll">
+      <svg id="dependency-graph" class="dependency-graph" role="img" aria-label="Abhängigkeitsgraph">
+        <defs>
+          <marker id="dep-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" class="dep-arrow-head"></path>
+          </marker>
+        </defs>
+      </svg>
+      <p class="empty-state" id="dependency-empty" hidden>Keine Abhängigkeiten definiert.</p>
+    </div>
   </section>
 
   <section class="panel">
@@ -145,6 +171,7 @@
             <th data-sort="priority">Priorität</th>
             <th data-sort="start_date">Start</th>
             <th data-sort="golive_date">Go-Live</th>
+            <th data-sort="depends_on_names">Abhängig von</th>
             <th></th>
           </tr>
         </thead>

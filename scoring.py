@@ -7,6 +7,7 @@ for both the scoring and the German UI text.
 """
 
 from collections import OrderedDict
+from datetime import date
 
 # value -> points
 VALUE_ADDED = OrderedDict([
@@ -185,6 +186,18 @@ MAX_PRIORITY = (
     + max(PROCESS_CRITICALITY.values())
     + max(PROCESS_DEPENDENCY.values())
 )
+
+
+# A backlog use case's start date is overruled to this fixed, far-future
+# date instead of being computed from golive_date/development_time - it has
+# no real schedule until it's promoted out of the backlog.
+BACKLOG_START_DATE = date(2030, 1, 1)
+
+
+def is_backlog(value_added: str, ai_feasibility: str) -> bool:
+    """A use case falls into the backlog if its value is Tief and/or its AI
+    feasibility is Tief - not worth pursuing yet, or not achievable yet."""
+    return value_added == "low" or ai_feasibility == "low"
 
 
 def development_months(value: str) -> int:
