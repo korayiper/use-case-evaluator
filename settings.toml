@@ -8,8 +8,18 @@
 db_backend = "sqlite"
 sqlite_path = "usecases.db"
 
+# nginx (or whatever sits in front in prod) authenticates the user and sets
+# this header before the request reaches the app - see auth.py. Phase 1:
+# who can create/edit/delete is just this hardcoded list of a-numbers,
+# everyone else gets read-only. Edit this list to add/remove writers.
+remote_user_header = "X-Remote-User"
+writer_users = ["a20779"]
+
 [development]
 db_backend = "sqlite"
+# No reverse proxy locally, so nothing sets X-Remote-User - this stands in
+# for it so the app has an identity to work with when testing.
+dev_user = "a20779"
 
 [production]
 db_backend = "mssql"

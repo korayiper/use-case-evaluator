@@ -31,7 +31,7 @@ def _mssql_connection_string() -> str:
     password = settings["mssql_password"]
     return (
         f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};"
-        f"UID={user};PWD={password};Encrypt=yes;TrustServerCertificate=no;"
+        f"UID={user};PWD={password};Encrypt=yes;TrustServerCertificate=yes;"
     )
 
 
@@ -55,6 +55,9 @@ def get_connection():
 # cycles or multiple cascade paths"). delete_use_case() below cleans up both
 # directions explicitly instead, which works identically on both backends
 # rather than relying on DB-level cascade semantics that differ between them.
+#
+# economic_value is a fixed 5-class attribute (like value_added etc.),
+# stored as its string key and scored via scoring.py.
 SQLITE_SCHEMA = [
     """
     CREATE TABLE IF NOT EXISTS use_cases (
@@ -69,6 +72,7 @@ SQLITE_SCHEMA = [
         development_time TEXT NOT NULL,
         process_criticality TEXT NOT NULL,
         process_dependency TEXT NOT NULL,
+        economic_value TEXT NOT NULL,
         golive_date TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -99,6 +103,7 @@ MSSQL_SCHEMA = [
         development_time NVARCHAR(50) NOT NULL,
         process_criticality NVARCHAR(50) NOT NULL,
         process_dependency NVARCHAR(50) NOT NULL,
+        economic_value NVARCHAR(50) NOT NULL,
         golive_date NVARCHAR(10) NOT NULL,
         created_at DATETIME2 NOT NULL DEFAULT (SYSUTCDATETIME())
     )
@@ -194,6 +199,7 @@ def add_use_case(
     development_time,
     process_criticality,
     process_dependency,
+    economic_value,
     golive_date,
     depends_on_ids=None,
 ) -> str:
@@ -203,8 +209,9 @@ def add_use_case(
             """
             INSERT INTO use_cases
                 (id, name, idea_initiator, description, value_added_description, use_category, ai_feasibility,
-                 value_added, development_time, process_criticality, process_dependency, golive_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 value_added, development_time, process_criticality, process_dependency, economic_value,
+                 golive_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 use_case_id,
@@ -218,6 +225,7 @@ def add_use_case(
                 development_time,
                 process_criticality,
                 process_dependency,
+                economic_value,
                 golive_date,
             ),
         )
@@ -237,6 +245,7 @@ def update_use_case(
     development_time,
     process_criticality,
     process_dependency,
+    economic_value,
     golive_date,
     depends_on_ids=None,
 ):
@@ -246,7 +255,7 @@ def update_use_case(
             UPDATE use_cases SET
                 name = ?, idea_initiator = ?, description = ?, value_added_description = ?, use_category = ?,
                 ai_feasibility = ?, value_added = ?, development_time = ?, process_criticality = ?,
-                process_dependency = ?, golive_date = ?
+                process_dependency = ?, economic_value = ?, golive_date = ?
             WHERE id = ?
             """,
             (
@@ -260,6 +269,7 @@ def update_use_case(
                 development_time,
                 process_criticality,
                 process_dependency,
+                economic_value,
                 golive_date,
                 use_case_id,
             ),
@@ -303,7 +313,11 @@ def _enrich(row: dict, depends_on_ids: list[str], depends_on_names: list[str]) -
     backlog = scoring.is_backlog(d["value_added"], d["ai_feasibility"])
     start = scoring.BACKLOG_START_DATE if backlog else golive - timedelta(days=months * 30)
     d["priority"] = scoring.points(
-        d["value_added"], d["development_time"], d["process_criticality"], d["process_dependency"]
+        d["value_added"],
+        d["development_time"],
+        d["process_criticality"],
+        d["process_dependency"],
+        d["economic_value"],
     )
     d["value_added_points"] = scoring.VALUE_ADDED[d["value_added"]]
     d["development_time_points"] = scoring.DEVELOPMENT_TIME[d["development_time"]][0]
@@ -312,6 +326,7 @@ def _enrich(row: dict, depends_on_ids: list[str], depends_on_names: list[str]) -
     d["process_dependency_points"] = scoring.PROCESS_DEPENDENCY[d["process_dependency"]]
     d["ai_feasibility_points"] = scoring.AI_FEASIBILITY[d["ai_feasibility"]]
     d["ai_feasibility_rank"] = scoring.AI_FEASIBILITY_RANK[d["ai_feasibility"]]
+    d["economic_value_points"] = scoring.ECONOMIC_VALUE[d["economic_value"]]
     d["is_backlog"] = backlog
     d["start_date"] = start.isoformat()
     d["depends_on"] = depends_on_ids
@@ -324,6 +339,7 @@ def _enrich(row: dict, depends_on_ids: list[str], depends_on_names: list[str]) -
             d["process_dependency"],
             d["use_category"],
             d["ai_feasibility"],
+            d["economic_value"],
         )
     )
     return d

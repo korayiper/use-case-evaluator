@@ -1,35 +1,42 @@
 """Scoring rules for AI use cases.
 
 Each ordinal attribute has a fixed set of allowed values, each worth a fixed
-number of points. Priority is simply the sum of the four points. German
-display labels live here too, so the frontend has a single source of truth
-for both the scoring and the German UI text.
+number of points. Priority is the sum of all five scored attributes' points.
+German display labels live here too, so the frontend has a single source of
+truth for both the scoring and the German UI text.
 """
 
 from collections import OrderedDict
 from datetime import date
 
-# value -> points
+# value -> points. Field/identifier stays "value_added" for backward
+# compatibility (DB column, API field, is_backlog() check all key off it),
+# even though the business now calls this attribute "Breitenwirkung/Kultur"
+# rather than "Mehrwert" - only the display name and help text changed.
 VALUE_ADDED = OrderedDict([
     ("high", 5),
     ("medium", 3),
     ("low", 1),
 ])
 VALUE_ADDED_LABELS = {"high": "Hoch", "medium": "Mittel", "low": "Tief"}
+VALUE_ADDED_DESCRIPTION = (
+    "Die Breitenwirkung ist als Anzahl Personen, die davon profitieren, zu verstehen."
+)
 # Decision-support text shown to the user when choosing a class.
 VALUE_ADDED_HELP = {
     "high": (
-        "Mehr als 300 User profitieren von dem Use Case (Qualität/Zeitersparnis) oder "
-        "durch den Use Case können mind. 1-2 Personalressourcen effektiv abgebaut werden."
+        "Mehr als 300 User profitieren von dem Use Case. Die Breitenwirkung ist hoch und "
+        "hilft KI als selbstverständliches Hilfsmittel zu nutzen und Fähigkeiten dadurch "
+        "gezielt zu erweitern."
     ),
     "medium": (
-        "Mehr als 100 User profitieren von dem Use Case (Qualität/Zeitersparnis) und "
-        "können dadurch massgebliche Zeit einsparen. Ein Abbau von Personalressourcen ist "
-        "aber aufgrund der verteilten Einsparung nicht möglich."
+        "Mehr als 100 User profitieren von dem Use Case. Die Breitenwirkung ist moderat "
+        "und hilft KI als selbstverständliches Hilfsmittel zu nutzen und Fähigkeiten "
+        "dadurch gezielt zu erweitern."
     ),
     "low": (
-        "Nur wenige User profitieren. Die Optimierung für den Einzelnen kann dabei gross "
-        "sein, bleibt aber für die Bank unbedeutend."
+        "Nur wenige User profitieren. Die Breitenwirkung bleibt aber für die Bank mit dem "
+        "Use Case unbedeutend."
     ),
 }
 
@@ -147,7 +154,7 @@ USE_CATEGORY_HELP = {}
 
 # Whether the idea is achievable with today's AI at all, as opposed to
 # science fiction. Always worth 0 points - it never contributes to the
-# priority score, unlike the four scored attributes above. Best-to-worst
+# priority score, unlike the scored attributes above/below. Best-to-worst
 # order, used to rank/color the class in the UI (points can't do that job
 # here since they're all 0).
 AI_FEASIBILITY = OrderedDict([
@@ -174,17 +181,63 @@ AI_FEASIBILITY_HELP = {
     ),
 }
 
+# Grobeinschätzung des Gesamtnutzens für die Bank (strategische Relevanz,
+# Kundennutzen, Wettbewerbsdruck, Zeitersparnis, Kostenreduktion,
+# Ertragspotential). Fixed 5-class scale defined by the business ("CTO
+# spec": Wirtschaftlicher Nutzen), worth 2-10 points in steps of 2 -
+# contributes to the priority score like the other scored attributes above.
+# Field/identifier name is English (economic_value) to match the rest of
+# the codebase's convention; only the display labels are German.
+ECONOMIC_VALUE = OrderedDict([
+    ("very_high", 10),
+    ("high", 8),
+    ("medium", 6),
+    ("low", 4),
+    ("very_low", 2),
+])
+ECONOMIC_VALUE_LABELS = {
+    "very_high": "Sehr hoch",
+    "high": "Hoch",
+    "medium": "Mittel",
+    "low": "Tief",
+    "very_low": "Sehr tief",
+}
+ECONOMIC_VALUE_DESCRIPTION = (
+    'Der "Wirtschaftliche Nutzen" ist als Gesamtausprägung aus strategischer Relevanz/'
+    "Dringlichkeit, qualitativem Erfordernis, erwartetem Kundennutzen, Wettbewerbsdruck, "
+    "Zeitersparnis, Kostenreduktion sowie Ertragspotential für die AKB als Ganzes zu "
+    "verstehen. Es handelt sich dabei um eine Grobeinschätzung."
+)
+# Decision-support text shown to the user when choosing a class.
+ECONOMIC_VALUE_HELP = {
+    "very_high": (
+        'Der Use Case ist massgebend, um den "Wirtschaftlichen Nutzen" und die '
+        "Zukunftsfähigkeit der Bank sicherzustellen."
+    ),
+    "high": (
+        'Der Use Case erzielt einen wesentlichen "Wirtschaftlichen Nutzen" und stärkt '
+        "die Zukunftsfähigkeit der Bank."
+    ),
+    "medium": 'Der Use Case erzeugt einen moderaten "Wirtschaftlichen Nutzen".',
+    "low": 'Der "Wirtschaftliche Nutzen" ist vorhanden aber aus Sicht Gesamtbank gering.',
+    "very_low": (
+        'Der "Wirtschaftliche Nutzen" ist vorhanden aber aus Sicht Gesamtbank unbedeutend.'
+    ),
+}
+
 MIN_PRIORITY = (
     min(VALUE_ADDED.values())
     + min(p for p, _ in DEVELOPMENT_TIME.values())
     + min(PROCESS_CRITICALITY.values())
     + min(PROCESS_DEPENDENCY.values())
+    + min(ECONOMIC_VALUE.values())
 )
 MAX_PRIORITY = (
     max(VALUE_ADDED.values())
     + max(p for p, _ in DEVELOPMENT_TIME.values())
     + max(PROCESS_CRITICALITY.values())
     + max(PROCESS_DEPENDENCY.values())
+    + max(ECONOMIC_VALUE.values())
 )
 
 
@@ -204,17 +257,30 @@ def development_months(value: str) -> int:
     return DEVELOPMENT_TIME[value][1]
 
 
-def points(value_added: str, development_time: str, process_criticality: str, process_dependency: str) -> int:
+def points(
+    value_added: str,
+    development_time: str,
+    process_criticality: str,
+    process_dependency: str,
+    economic_value: str,
+) -> int:
     return (
         VALUE_ADDED[value_added]
         + DEVELOPMENT_TIME[development_time][0]
         + PROCESS_CRITICALITY[process_criticality]
         + PROCESS_DEPENDENCY[process_dependency]
+        + ECONOMIC_VALUE[economic_value]
     )
 
 
 def labels_for(
-    value_added, development_time, process_criticality, process_dependency, use_category, ai_feasibility
+    value_added,
+    development_time,
+    process_criticality,
+    process_dependency,
+    use_category,
+    ai_feasibility,
+    economic_value,
 ) -> dict:
     return {
         "value_added_label": VALUE_ADDED_LABELS[value_added],
@@ -223,6 +289,7 @@ def labels_for(
         "process_dependency_label": PROCESS_DEPENDENCY_LABELS[process_dependency],
         "use_category_label": USE_CATEGORY[use_category],
         "ai_feasibility_label": AI_FEASIBILITY_LABELS[ai_feasibility],
+        "economic_value_label": ECONOMIC_VALUE_LABELS[economic_value],
     }
 
 
@@ -276,11 +343,22 @@ def options_payload() -> dict:
             }
             for k, v in AI_FEASIBILITY.items()
         ],
+        "economic_value": [
+            {
+                "value": k,
+                "label": ECONOMIC_VALUE_LABELS[k],
+                "points": v,
+                "help": ECONOMIC_VALUE_HELP.get(k),
+            }
+            for k, v in ECONOMIC_VALUE.items()
+        ],
         "descriptions": {
+            "value_added": VALUE_ADDED_DESCRIPTION,
             "development_time": DEVELOPMENT_TIME_DESCRIPTION,
             "process_criticality": PROCESS_CRITICALITY_DESCRIPTION,
             "process_dependency": PROCESS_DEPENDENCY_DESCRIPTION,
             "ai_feasibility": AI_FEASIBILITY_DESCRIPTION,
+            "economic_value": ECONOMIC_VALUE_DESCRIPTION,
         },
         "min_priority": MIN_PRIORITY,
         "max_priority": MAX_PRIORITY,

@@ -12,7 +12,7 @@
     "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#0d366b",
   ];
 
-  // Status ramp (worst -> best) for the four scored attributes: red = few
+  // Status ramp (worst -> best) for the scored attributes: red = few
   // points / unfavorable, green = many points / favorable. Interpolated so
   // it works for attributes with any number of levels (3 to 5).
   const STATUS_STOPS = [
@@ -29,10 +29,10 @@
     "#008300", // green
     "#e87ba4", // magenta
     "#eda100", // yellow
-    "#1baf7a", // aqua
+    "#e34948", // red - was aqua, too close to green at a glance (5th slot = autonomer agent)
     "#eb6834", // orange
     "#4a3aa7", // violet
-    "#e34948", // red
+    "#1baf7a", // aqua
   ];
 
   const state = {
@@ -50,6 +50,7 @@
       process_criticality: [],
       process_dependency: [],
       ai_feasibility: [],
+      economic_value: [],
     },
   };
 
@@ -58,7 +59,8 @@
 
   const FILTER_CONFIG = [
     { id: "filter-use-category", key: "use_category", label: "Nutzungskategorie" },
-    { id: "filter-value-added", key: "value_added", label: "Mehrwert" },
+    { id: "filter-economic-value", key: "economic_value", label: "Wirtschaftlicher Nutzen" },
+    { id: "filter-value-added", key: "value_added", label: "Breitenwirkung/Kultur" },
     { id: "filter-development-time", key: "development_time", label: "Entwicklungsdauer" },
     { id: "filter-process-criticality", key: "process_criticality", label: "Prozesskritikalität" },
     { id: "filter-process-dependency", key: "process_dependency", label: "Prozessabhängigkeit" },
@@ -71,6 +73,7 @@
     "process_criticality_points",
     "process_dependency_points",
     "ai_feasibility_rank",
+    "economic_value_points",
     "priority",
   ]);
 
@@ -104,8 +107,8 @@
   }
 
   // `key` selects which numeric field drives the color: "points" for the
-  // four scored attributes, or "rank" for attributes like ai_feasibility
-  // whose points are always 0 and can't tell classes apart.
+  // scored attributes, or "rank" for attributes like ai_feasibility whose
+  // points are always 0 and can't tell classes apart.
   function statusColorForPoints(value, options, key = "points") {
     const [min, max] = pointsRange(options, key);
     const t = max === min ? 1 : (value - min) / (max - min);
@@ -141,7 +144,7 @@
   // ---------- data loading ----------
 
   async function loadOptions() {
-    const res = await fetch("/api/options");
+    const res = await fetch("api/options");
     state.options = await res.json();
     populateSelect("f-value-added", state.options.value_added, true);
     populateSelect("f-development-time", state.options.development_time, true);
@@ -149,6 +152,7 @@
     populateSelect("f-process-dependency", state.options.process_dependency, true);
     populateSelect("f-use-category", state.options.use_category, false);
     populateSelect("f-ai-feasibility", state.options.ai_feasibility, true);
+    populateSelect("f-economic-value", state.options.economic_value, true);
     setupHelpPanels();
     setupFilters();
   }
@@ -160,6 +164,7 @@
     "development_time",
     "process_criticality",
     "process_dependency",
+    "economic_value",
   ];
 
   function setupHelpPanels() {
@@ -376,7 +381,7 @@
   }
 
   async function loadUseCases() {
-    const res = await fetch("/api/use-cases");
+    const res = await fetch("api/use-cases");
     state.useCases = await res.json();
     render();
   }
@@ -446,9 +451,27 @@
       nameTd.textContent = uc.name;
       const titleParts = [];
       if (uc.description) titleParts.push(`Beschreibung: ${uc.description}`);
-      if (uc.value_added_description) titleParts.push(`Mehrwert: ${uc.value_added_description}`);
+      if (uc.value_added_description) titleParts.push(`Breitenwirkung/Kultur: ${uc.value_added_description}`);
       if (titleParts.length) nameTd.title = titleParts.join("\n");
       tr.appendChild(nameTd);
+
+      const actionsTd = document.createElement("td");
+      const editBtn = document.createElement("button");
+      editBtn.className = "btn-icon";
+      editBtn.type = "button";
+      editBtn.title = "Bearbeiten";
+      editBtn.textContent = "✎";
+      editBtn.addEventListener("click", () => openEditForm(uc));
+      actionsTd.appendChild(editBtn);
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "btn-icon";
+      delBtn.type = "button";
+      delBtn.title = "Löschen";
+      delBtn.textContent = "✕";
+      delBtn.addEventListener("click", () => deleteUseCase(uc.id));
+      actionsTd.appendChild(delBtn);
+      tr.appendChild(actionsTd);
 
       const initiatorTd = document.createElement("td");
       initiatorTd.textContent = uc.idea_initiator;
@@ -466,6 +489,7 @@
       categoryTd.appendChild(categoryChip);
       tr.appendChild(categoryTd);
 
+      tr.appendChild(attrCell(uc.economic_value_label, uc.economic_value_points, opts.economic_value));
       tr.appendChild(attrCell(uc.value_added_label, uc.value_added_points, opts.value_added));
       tr.appendChild(attrCell(uc.development_time_label, uc.development_time_points, opts.development_time));
       tr.appendChild(attrCell(uc.process_criticality_label, uc.process_criticality_points, opts.process_criticality));
@@ -491,7 +515,7 @@
         backlogChip.style.background = bg;
         backlogChip.style.color = textColorFor(bg);
         backlogChip.textContent = "Backlog";
-        backlogChip.title = "Start nach 2030 (Mehrwert und/oder KI-Umsetzbarkeit sind Tief)";
+        backlogChip.title = "Start nach 2030 (Breitenwirkung/Kultur und/oder KI-Umsetzbarkeit sind Tief)";
         startTd.appendChild(backlogChip);
       } else {
         startTd.textContent = formatDate(uc.start_date);
@@ -512,24 +536,6 @@
       }
       tr.appendChild(dependsTd);
 
-      const actionsTd = document.createElement("td");
-      const editBtn = document.createElement("button");
-      editBtn.className = "btn-icon";
-      editBtn.type = "button";
-      editBtn.title = "Bearbeiten";
-      editBtn.textContent = "✎";
-      editBtn.addEventListener("click", () => openEditForm(uc));
-      actionsTd.appendChild(editBtn);
-
-      const delBtn = document.createElement("button");
-      delBtn.className = "btn-icon";
-      delBtn.type = "button";
-      delBtn.title = "Löschen";
-      delBtn.textContent = "✕";
-      delBtn.addEventListener("click", () => deleteUseCase(uc.id));
-      actionsTd.appendChild(delBtn);
-      tr.appendChild(actionsTd);
-
       tbody.appendChild(tr);
     }
   }
@@ -540,23 +546,22 @@
 
   async function deleteUseCase(id) {
     if (!confirm("Diesen Anwendungsfall löschen?")) return;
-    await fetch(`/api/use-cases/${id}`, { method: "DELETE" });
+    await fetch(`api/use-cases/${id}`, { method: "DELETE" });
     await loadUseCases();
   }
 
   // ---------- timeline ----------
 
+  // Always quarter-aligned (Jan/Apr/Jul/Okt), not just "every N months from
+  // wherever the data happens to start" - that's the fixed reporting-period
+  // grid the business expects, regardless of the actual data range.
   function monthTicks(rangeStart, rangeEnd) {
-    const totalMonths =
-      (rangeEnd.getFullYear() - rangeStart.getFullYear()) * 12 +
-      (rangeEnd.getMonth() - rangeStart.getMonth());
-    const step = totalMonths > 36 ? 6 : totalMonths > 18 ? 3 : 1;
-
+    const startQuarterMonth = Math.floor(rangeStart.getMonth() / 3) * 3;
     const ticks = [];
-    const cursor = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+    const cursor = new Date(rangeStart.getFullYear(), startQuarterMonth, 1);
     while (cursor <= rangeEnd) {
       ticks.push(new Date(cursor));
-      cursor.setMonth(cursor.getMonth() + step);
+      cursor.setMonth(cursor.getMonth() + 3);
     }
     return ticks;
   }
@@ -723,16 +728,17 @@
       `Ideengeber: ${uc.idea_initiator}`,
       `Priorität: ${uc.priority}`,
       ...(uc.is_backlog ? ["Status: Backlog"] : []),
-      `Mehrwert: ${uc.value_added_label} (${uc.value_added_points}p)`,
+      `Breitenwirkung/Kultur: ${uc.value_added_label} (${uc.value_added_points}p)`,
       `Entwicklungsdauer: ${uc.development_time_label} (${uc.development_time_points}p)`,
       `Prozesskritikalität: ${uc.process_criticality_label} (${uc.process_criticality_points}p)`,
       `Prozessabhängigkeit: ${uc.process_dependency_label} (${uc.process_dependency_points}p)`,
       `KI-Umsetzbarkeit: ${uc.ai_feasibility_label}`,
+      `Wirtschaftlicher Nutzen: ${uc.economic_value_label} (${uc.economic_value_points}p)`,
       `Start: ${formatDate(uc.start_date)}`,
       `Go-Live: ${formatDate(uc.golive_date)}`,
     ];
     if (uc.description) lines.push(`Beschreibung: ${uc.description}`);
-    if (uc.value_added_description) lines.push(`Mehrwertbeschreibung: ${uc.value_added_description}`);
+    if (uc.value_added_description) lines.push(`Beschreibung Breitenwirkung/Kultur: ${uc.value_added_description}`);
     if (uc.depends_on_names.length) lines.push(`Abhängig von: ${uc.depends_on_names.join(", ")}`);
     for (const line of lines) {
       const p = document.createElement("div");
@@ -1010,6 +1016,7 @@
     form.development_time.value = uc.development_time;
     form.process_criticality.value = uc.process_criticality;
     form.process_dependency.value = uc.process_dependency;
+    form.economic_value.value = uc.economic_value;
     form.golive_date.value = uc.golive_date;
     el("add-panel-title").textContent = "Anwendungsfall bearbeiten";
     el("submit-add").textContent = "Änderungen speichern";
@@ -1048,12 +1055,13 @@
         development_time: form.development_time.value,
         process_criticality: form.process_criticality.value,
         process_dependency: form.process_dependency.value,
+        economic_value: form.economic_value.value,
         golive_date: form.golive_date.value,
         depends_on: state.formDependsOn,
       };
 
       const isEditing = state.editingId !== null;
-      const url = isEditing ? `/api/use-cases/${state.editingId}` : "/api/use-cases";
+      const url = isEditing ? `api/use-cases/${state.editingId}` : "api/use-cases";
       const method = isEditing ? "PUT" : "POST";
 
       const res = await fetch(url, {

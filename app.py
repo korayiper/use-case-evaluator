@@ -1,17 +1,18 @@
 from datetime import date
 from enum import Enum
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from starlette.requests import Request
 
+import auth
 import db
 import scoring
 
-app = FastAPI(title="AI Use Case Evaluator")
+app = FastAPI(root_path="/ai-use-case-portfolio", title="AI Use Case Evaluator")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -29,6 +30,7 @@ ProcessCriticality = _str_enum("ProcessCriticality", scoring.PROCESS_CRITICALITY
 ProcessDependency = _str_enum("ProcessDependency", scoring.PROCESS_DEPENDENCY.keys())
 UseCategory = _str_enum("UseCategory", scoring.USE_CATEGORY.keys())
 AiFeasibility = _str_enum("AiFeasibility", scoring.AI_FEASIBILITY.keys())
+EconomicValue = _str_enum("EconomicValue", scoring.ECONOMIC_VALUE.keys())
 
 
 class UseCaseCreate(BaseModel):
@@ -42,6 +44,7 @@ class UseCaseCreate(BaseModel):
     development_time: DevelopmentTime
     process_criticality: ProcessCriticality
     process_dependency: ProcessDependency
+    economic_value: EconomicValue
     golive_date: date
     depends_on: list[str] = Field(default_factory=list)
 
@@ -66,6 +69,12 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
 
+@app.get("/api/me")
+def api_me(request: Request):
+    user = auth.get_current_user(request)
+    return {"user": user, "is_writer": auth.is_writer(user)}
+
+
 @app.get("/api/options")
 def api_options():
     return scoring.options_payload()
@@ -76,7 +85,7 @@ def api_list_use_cases():
     return db.list_use_cases()
 
 
-@app.post("/api/use-cases", status_code=201)
+@app.post("/api/use-cases", status_code=201, dependencies=[Depends(auth.require_writer)])
 def api_create_use_case(payload: UseCaseCreate):
     _validate_dependencies(None, payload.depends_on)
     db.add_use_case(
@@ -90,13 +99,14 @@ def api_create_use_case(payload: UseCaseCreate):
         development_time=payload.development_time.value,
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
+        economic_value=payload.economic_value.value,
         golive_date=payload.golive_date.isoformat(),
         depends_on_ids=payload.depends_on,
     )
     return {"status": "created"}
 
 
-@app.put("/api/use-cases/{use_case_id}")
+@app.put("/api/use-cases/{use_case_id}", dependencies=[Depends(auth.require_writer)])
 def api_update_use_case(use_case_id: str, payload: UseCaseCreate):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
@@ -113,6 +123,7 @@ def api_update_use_case(use_case_id: str, payload: UseCaseCreate):
         development_time=payload.development_time.value,
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
+        economic_value=payload.economic_value.value,
         golive_date=payload.golive_date.isoformat(),
         depends_on_ids=payload.depends_on,
     )
