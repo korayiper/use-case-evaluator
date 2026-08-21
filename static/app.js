@@ -38,6 +38,7 @@
   const state = {
     options: null,
     useCases: [],
+    isWriter: false,
     sortKey: "priority",
     sortDir: "desc",
     editingId: null,
@@ -142,6 +143,17 @@
   }
 
   // ---------- data loading ----------
+
+  // Purely a UX nicety - hides controls the user has no rights to use.
+  // The server enforces the actual permission check independently (403 on
+  // POST/PUT for non-writers), so this can't be bypassed for real by
+  // showing the button anyway (e.g. via devtools).
+  async function loadCurrentUser() {
+    const res = await fetch("api/me");
+    const data = await res.json();
+    state.isWriter = data.is_writer;
+    el("toggle-add").hidden = !state.isWriter;
+  }
 
   async function loadOptions() {
     const res = await fetch("api/options");
@@ -456,21 +468,23 @@
       tr.appendChild(nameTd);
 
       const actionsTd = document.createElement("td");
-      const editBtn = document.createElement("button");
-      editBtn.className = "btn-icon";
-      editBtn.type = "button";
-      editBtn.title = "Bearbeiten";
-      editBtn.textContent = "✎";
-      editBtn.addEventListener("click", () => openEditForm(uc));
-      actionsTd.appendChild(editBtn);
+      if (state.isWriter) {
+        const editBtn = document.createElement("button");
+        editBtn.className = "btn-icon";
+        editBtn.type = "button";
+        editBtn.title = "Bearbeiten";
+        editBtn.textContent = "✎";
+        editBtn.addEventListener("click", () => openEditForm(uc));
+        actionsTd.appendChild(editBtn);
 
-      const delBtn = document.createElement("button");
-      delBtn.className = "btn-icon";
-      delBtn.type = "button";
-      delBtn.title = "Löschen";
-      delBtn.textContent = "✕";
-      delBtn.addEventListener("click", () => deleteUseCase(uc.id));
-      actionsTd.appendChild(delBtn);
+        const delBtn = document.createElement("button");
+        delBtn.className = "btn-icon";
+        delBtn.type = "button";
+        delBtn.title = "Löschen";
+        delBtn.textContent = "✕";
+        delBtn.addEventListener("click", () => deleteUseCase(uc.id));
+        actionsTd.appendChild(delBtn);
+      }
       tr.appendChild(actionsTd);
 
       const initiatorTd = document.createElement("td");
@@ -1110,6 +1124,7 @@
   (async function init() {
     setupForm();
     setupSorting();
+    await loadCurrentUser();
     await loadOptions();
     await loadUseCases();
   })();
