@@ -262,15 +262,31 @@ def points(
     development_time: str,
     process_criticality: str,
     process_dependency: str,
-    economic_value: str,
-) -> int:
+    economic_value_points: float,
+) -> float:
     return (
         VALUE_ADDED[value_added]
         + DEVELOPMENT_TIME[development_time][0]
         + PROCESS_CRITICALITY[process_criticality]
         + PROCESS_DEPENDENCY[process_dependency]
-        + ECONOMIC_VALUE[economic_value]
+        + economic_value_points
     )
+
+
+def economic_value_median(vote_values: list[str]) -> float:
+    """Raw numeric median of point values - kept unrounded even between two
+    classes on an even-count vote, since that IS the mathematically correct
+    central tendency for the priority sum."""
+    pts = sorted(ECONOMIC_VALUE[v] for v in vote_values)
+    n, mid = len(pts), len(pts) // 2
+    return float(pts[mid]) if n % 2 else (pts[mid - 1] + pts[mid]) / 2
+
+
+def economic_value_nearest_label(median_points: float) -> str:
+    """Nearest ECONOMIC_VALUE class to a median - display only, never fed
+    back into the priority sum. Exact ties round up (toward the higher
+    class), per product decision."""
+    return min(ECONOMIC_VALUE.items(), key=lambda kv: (abs(kv[1] - median_points), -kv[1]))[0]
 
 
 def labels_for(

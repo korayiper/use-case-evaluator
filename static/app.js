@@ -3,37 +3,6 @@
 
   const GUTTER_PX = 190; // reserved on the right of the timeline track for row labels
   const MIN_BAR_PX = 4;
-  const LOCALE = "de-DE";
-
-  // Sequential blue ramp (ordinal-safe subset of the palette's 100-700 ramp),
-  // used for the aggregate priority (magnitude, not "good/bad").
-  const PRIORITY_RAMP = [
-    "#86b6ef", "#6da7ec", "#5598e7", "#3987e5",
-    "#2a78d6", "#256abf", "#1c5cab", "#184f95", "#0d366b",
-  ];
-
-  // Status ramp (worst -> best) for the scored attributes: red = few
-  // points / unfavorable, green = many points / favorable. Interpolated so
-  // it works for attributes with any number of levels (3 to 5).
-  const STATUS_STOPS = [
-    { t: 0.0, rgb: [0xd0, 0x3b, 0x3b] }, // critical
-    { t: 0.33, rgb: [0xec, 0x83, 0x5a] }, // serious
-    { t: 0.66, rgb: [0xfa, 0xb2, 0x19] }, // warning
-    { t: 1.0, rgb: [0x0c, 0xa3, 0x0c] }, // good
-  ];
-
-  // Categorical palette, fixed order (identity, not magnitude) - used for
-  // Nutzungskategorie. Assigned in this order, never cycled.
-  const CATEGORY_PALETTE = [
-    "#2a78d6", // blue
-    "#008300", // green
-    "#e87ba4", // magenta
-    "#eda100", // yellow
-    "#e34948", // red - was aqua, too close to green at a glance (5th slot = autonomer agent)
-    "#eb6834", // orange
-    "#4a3aa7", // violet
-    "#1baf7a", // aqua
-  ];
 
   const state = {
     options: null,
@@ -41,8 +10,6 @@
     isWriter: false,
     sortKey: "priority",
     sortDir: "desc",
-    editingId: null,
-    formDependsOn: [],
     filters: {
       search: "",
       use_category: [],
@@ -78,68 +45,12 @@
     "priority",
   ]);
 
-  const el = (id) => document.getElementById(id);
-
-  function colorFromRamp(ramp, t) {
-    const idx = Math.round(t * (ramp.length - 1));
-    return ramp[Math.min(ramp.length - 1, Math.max(0, idx))];
-  }
-
-  function statusColor(t) {
-    t = Math.min(1, Math.max(0, t));
-    let a = STATUS_STOPS[0];
-    let b = STATUS_STOPS[STATUS_STOPS.length - 1];
-    for (let i = 0; i < STATUS_STOPS.length - 1; i++) {
-      if (t >= STATUS_STOPS[i].t && t <= STATUS_STOPS[i + 1].t) {
-        a = STATUS_STOPS[i];
-        b = STATUS_STOPS[i + 1];
-        break;
-      }
-    }
-    const span = b.t - a.t || 1;
-    const localT = (t - a.t) / span;
-    const rgb = a.rgb.map((v, i) => Math.round(v + (b.rgb[i] - v) * localT));
-    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-  }
-
-  function pointsRange(options, key) {
-    const pts = options.map((o) => o[key]);
-    return [Math.min(...pts), Math.max(...pts)];
-  }
-
-  // `key` selects which numeric field drives the color: "points" for the
-  // scored attributes, or "rank" for attributes like ai_feasibility whose
-  // points are always 0 and can't tell classes apart.
-  function statusColorForPoints(value, options, key = "points") {
-    const [min, max] = pointsRange(options, key);
-    const t = max === min ? 1 : (value - min) / (max - min);
-    return statusColor(t);
-  }
-
-  // Accepts either "#rrggbb" or "rgb(r, g, b)".
-  function toRgbTriple(color) {
-    if (color.startsWith("#")) {
-      const bigint = parseInt(color.slice(1), 16);
-      return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
-    }
-    return color.match(/\d+/g).map(Number);
-  }
-
-  // Relative luminance (sRGB) to pick readable text color on a fill.
-  function textColorFor(color) {
-    const [r, g, b] = toRgbTriple(color);
-    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return lum > 0.6 ? "#0b0b0b" : "#ffffff";
-  }
-
-  function priorityColor(priority, minP, maxP) {
-    const t = maxP === minP ? 1 : (priority - minP) / (maxP - minP);
-    return colorFromRamp(PRIORITY_RAMP, t);
-  }
+  // Color/format math and structured-text rendering live in common.js,
+  // shared with use_case.js and board.js.
+  const { el, statusColorForPoints, textColorFor, priorityColor, formatDate } = Common;
 
   function categoryColor(value) {
-    const idx = state.options.use_category.findIndex((o) => o.value === value);
-    return CATEGORY_PALETTE[Math.max(0, idx) % CATEGORY_PALETTE.length];
+    return Common.categoryColor(value, state.options.use_category);
   }
 
   // ---------- data loading ----------
@@ -149,86 +60,21 @@
   // POST/PUT for non-writers), so this can't be bypassed for real by
   // showing the button anyway (e.g. via devtools).
   async function loadCurrentUser() {
-    const res = await fetch("api/me");
+    const res = await fetch(`${window.API_BASE}/me`);
     const data = await res.json();
     state.isWriter = data.is_writer;
     el("toggle-add").hidden = !state.isWriter;
   }
 
   async function loadOptions() {
-    const res = await fetch("api/options");
+    const res = await fetch(`${window.API_BASE}/options`);
     state.options = await res.json();
-    populateSelect("f-value-added", state.options.value_added, true);
-    populateSelect("f-development-time", state.options.development_time, true);
-    populateSelect("f-process-criticality", state.options.process_criticality, true);
-    populateSelect("f-process-dependency", state.options.process_dependency, true);
-    populateSelect("f-use-category", state.options.use_category, false);
-    populateSelect("f-ai-feasibility", state.options.ai_feasibility, true);
-    populateSelect("f-economic-value", state.options.economic_value, true);
-    setupHelpPanels();
-    setupFilters();
-  }
-
-  const HELP_FIELDS = [
-    "use_category",
-    "ai_feasibility",
-    "value_added",
-    "development_time",
-    "process_criticality",
-    "process_dependency",
-    "economic_value",
-  ];
-
-  function setupHelpPanels() {
-    for (const field of HELP_FIELDS) {
-      const helpOptions = state.options[field].filter((o) => o.help);
-      const description = (state.options.descriptions || {})[field];
-      const btn = document.querySelector(`.help-btn[data-help="${field}"]`);
-      const panel = el(`help-panel-${field}`);
-      if (helpOptions.length === 0 && !description) {
-        btn.hidden = true;
-        continue;
-      }
-      panel.innerHTML = "";
-      if (description) {
-        const intro = document.createElement("p");
-        intro.className = "help-intro";
-        intro.textContent = description;
-        panel.appendChild(intro);
-      }
-      const dl = document.createElement("dl");
-      for (const opt of helpOptions) {
-        const dt = document.createElement("dt");
-        dt.textContent = opt.label;
-        const dd = document.createElement("dd");
-        dd.textContent = opt.help;
-        dl.append(dt, dd);
-      }
-      panel.appendChild(dl);
-      btn.hidden = false;
-      btn.addEventListener("click", () => {
-        panel.hidden = !panel.hidden;
-      });
-    }
-  }
-
-  function populateSelect(id, options, withPoints) {
-    const select = el(id);
-    select.innerHTML = "";
-    for (const opt of options) {
-      const option = document.createElement("option");
-      option.value = opt.value;
-      option.textContent = withPoints ? `${opt.label} (${opt.points}p)` : opt.label;
-      select.appendChild(option);
-    }
+    UseCaseForm.setOptions(state.options);
+    setupFilters(); // builds the filter DOM (incl. its own help-btn/panel pairs) - must run before setupHelpPanels()
+    Common.setupHelpPanels(state.options);
   }
 
   // ---------- filters ----------
-
-  function closeAllFilterMenus() {
-    document.querySelectorAll(".ms-filter-menu").forEach((m) => (m.hidden = true));
-    document.querySelectorAll(".ms-filter-toggle").forEach((b) => b.classList.remove("active"));
-  }
 
   function filterToggleLabel(cfg) {
     const selected = state.filters[cfg.key];
@@ -240,70 +86,8 @@
     return `${cfg.label}: ${selected.length} ausgewählt`;
   }
 
-  // Generic checkbox-dropdown builder, shared by the filter bar and the
-  // dependency picker. Selection state lives with the caller (via the
-  // isSelected/onToggle/onClear callbacks) rather than in this function, so
-  // it has no opinion on what's being selected. The change handler passes
-  // back `opt.value` (the closed-over original, possibly-numeric value),
-  // never `checkbox.value` (which DOM-stringifies it) - callers that compare
-  // ids with strict equality (like dependency ids) depend on this.
-  function buildCheckboxDropdown(container, { options, isSelected, onToggle, onClear, toggleLabel }) {
-    container.className = "ms-filter";
-    container.innerHTML = "";
-
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "ms-filter-toggle";
-    toggle.textContent = toggleLabel();
-    container.appendChild(toggle);
-
-    const menu = document.createElement("div");
-    menu.className = "ms-filter-menu";
-    menu.hidden = true;
-
-    for (const opt of options) {
-      const label = document.createElement("label");
-      label.className = "ms-filter-option";
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = isSelected(opt.value);
-      checkbox.addEventListener("change", () => {
-        onToggle(opt.value, checkbox.checked);
-        toggle.textContent = toggleLabel();
-      });
-      label.append(checkbox, document.createTextNode(opt.label));
-      menu.appendChild(label);
-    }
-
-    const footer = document.createElement("div");
-    footer.className = "ms-filter-footer";
-    const clearBtn = document.createElement("button");
-    clearBtn.type = "button";
-    clearBtn.textContent = "Zurücksetzen";
-    clearBtn.addEventListener("click", () => {
-      onClear();
-      menu.querySelectorAll("input[type=checkbox]").forEach((cb) => (cb.checked = false));
-      toggle.textContent = toggleLabel();
-    });
-    footer.appendChild(clearBtn);
-    menu.appendChild(footer);
-    container.appendChild(menu);
-
-    toggle.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const wasOpen = !menu.hidden;
-      closeAllFilterMenus();
-      if (!wasOpen) {
-        menu.hidden = false;
-        toggle.classList.add("active");
-      }
-    });
-
-    return { toggle, menu };
-  }
-
   function buildMultiSelect(cfg) {
-    filterUI[cfg.key] = buildCheckboxDropdown(el(cfg.id), {
+    filterUI[cfg.key] = Common.buildCheckboxDropdown(el(cfg.id), {
       options: state.options[cfg.key],
       isSelected: (v) => state.filters[cfg.key].includes(v),
       onToggle: (v, checked) => {
@@ -317,26 +101,7 @@
         render();
       },
       toggleLabel: () => filterToggleLabel(cfg),
-    });
-  }
-
-  function buildDependencyPicker() {
-    buildCheckboxDropdown(el("f-depends-on"), {
-      options: state.useCases
-        .filter((uc) => uc.id !== state.editingId)
-        .map((uc) => ({ value: uc.id, label: uc.name }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
-      isSelected: (v) => state.formDependsOn.includes(v),
-      onToggle: (v, checked) => {
-        state.formDependsOn = checked
-          ? [...state.formDependsOn, v]
-          : state.formDependsOn.filter((x) => x !== v);
-      },
-      onClear: () => {
-        state.formDependsOn = [];
-      },
-      toggleLabel: () =>
-        state.formDependsOn.length === 0 ? "Keine Abhängigkeiten" : `${state.formDependsOn.length} ausgewählt`,
+      help: { field: cfg.key },
     });
   }
 
@@ -346,7 +111,7 @@
     }
 
     document.addEventListener("click", (e) => {
-      if (!e.target.closest(".ms-filter")) closeAllFilterMenus();
+      if (!e.target.closest(".ms-filter")) Common.closeAllFilterMenus();
     });
 
     el("f-search").addEventListener("input", (e) => {
@@ -393,8 +158,9 @@
   }
 
   async function loadUseCases() {
-    const res = await fetch("api/use-cases");
+    const res = await fetch(`${window.API_BASE}/use-cases`);
     state.useCases = await res.json();
+    UseCaseForm.setUseCases(state.useCases);
     render();
   }
 
@@ -460,32 +226,16 @@
       const tr = document.createElement("tr");
 
       const nameTd = document.createElement("td");
-      nameTd.textContent = uc.name;
+      const nameLink = document.createElement("a");
+      nameLink.className = "table-link";
+      nameLink.href = `${window.ROOT_PATH}/use-case/${uc.id}`;
+      nameLink.textContent = uc.name;
+      nameTd.appendChild(nameLink);
       const titleParts = [];
       if (uc.description) titleParts.push(`Beschreibung: ${uc.description}`);
       if (uc.value_added_description) titleParts.push(`Breitenwirkung/Kultur: ${uc.value_added_description}`);
       if (titleParts.length) nameTd.title = titleParts.join("\n");
       tr.appendChild(nameTd);
-
-      const actionsTd = document.createElement("td");
-      if (state.isWriter) {
-        const editBtn = document.createElement("button");
-        editBtn.className = "btn-icon";
-        editBtn.type = "button";
-        editBtn.title = "Bearbeiten";
-        editBtn.textContent = "✎";
-        editBtn.addEventListener("click", () => openEditForm(uc));
-        actionsTd.appendChild(editBtn);
-
-        const delBtn = document.createElement("button");
-        delBtn.className = "btn-icon";
-        delBtn.type = "button";
-        delBtn.title = "Löschen";
-        delBtn.textContent = "✕";
-        delBtn.addEventListener("click", () => deleteUseCase(uc.id));
-        actionsTd.appendChild(delBtn);
-      }
-      tr.appendChild(actionsTd);
 
       const initiatorTd = document.createElement("td");
       initiatorTd.textContent = uc.idea_initiator;
@@ -554,16 +304,6 @@
     }
   }
 
-  function formatDate(isoDate) {
-    return new Date(isoDate).toLocaleDateString(LOCALE, { year: "numeric", month: "2-digit", day: "2-digit" });
-  }
-
-  async function deleteUseCase(id) {
-    if (!confirm("Diesen Anwendungsfall löschen?")) return;
-    await fetch(`api/use-cases/${id}`, { method: "DELETE" });
-    await loadUseCases();
-  }
-
   // ---------- timeline ----------
 
   // Always quarter-aligned (Jan/Apr/Jul/Okt), not just "every N months from
@@ -581,7 +321,7 @@
   }
 
   function formatTick(date) {
-    return date.toLocaleDateString(LOCALE, { month: "short", year: "numeric" });
+    return date.toLocaleDateString(Common.LOCALE, { month: "short", year: "numeric" });
   }
 
   function renderTimeline() {
@@ -993,110 +733,18 @@
   }
 
   // ---------- form ----------
-
-  function closePanel() {
-    const panel = el("add-panel");
-    panel.hidden = true;
-    el("add-form").reset();
-    el("form-error").hidden = true;
-    state.editingId = null;
-    state.formDependsOn = [];
-  }
-
-  function openAddForm() {
-    state.editingId = null;
-    state.formDependsOn = [];
-    el("add-form").reset();
-    el("form-error").hidden = true;
-    el("add-panel-title").textContent = "Neuer Anwendungsfall";
-    el("submit-add").textContent = "Anwendungsfall speichern";
-    el("add-panel").hidden = false;
-    buildDependencyPicker();
-    el("f-name").focus();
-  }
-
-  function openEditForm(uc) {
-    const form = el("add-form");
-    state.editingId = uc.id;
-    state.formDependsOn = [...uc.depends_on];
-    el("form-error").hidden = true;
-    form.name.value = uc.name;
-    form.idea_initiator.value = uc.idea_initiator;
-    form.description.value = uc.description || "";
-    form.value_added_description.value = uc.value_added_description || "";
-    form.use_category.value = uc.use_category;
-    form.ai_feasibility.value = uc.ai_feasibility;
-    form.value_added.value = uc.value_added;
-    form.development_time.value = uc.development_time;
-    form.process_criticality.value = uc.process_criticality;
-    form.process_dependency.value = uc.process_dependency;
-    form.economic_value.value = uc.economic_value;
-    form.golive_date.value = uc.golive_date;
-    el("add-panel-title").textContent = "Anwendungsfall bearbeiten";
-    el("submit-add").textContent = "Änderungen speichern";
-    const panel = el("add-panel");
-    panel.hidden = false;
-    buildDependencyPicker();
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    el("f-name").focus();
-  }
+  // Form markup and logic (open/close/submit) live in use_case_form.js,
+  // shared with the detail page's inline editing - this page just wires its
+  // own "+ Neuer Anwendungsfall" toggle to it.
 
   function setupForm() {
     const panel = el("add-panel");
     el("toggle-add").addEventListener("click", () => {
       if (panel.hidden) {
-        openAddForm();
+        UseCaseForm.openAdd();
       } else {
-        closePanel();
+        UseCaseForm.close();
       }
-    });
-    el("cancel-add").addEventListener("click", closePanel);
-
-    el("add-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const form = e.target;
-      const errorEl = el("form-error");
-      errorEl.hidden = true;
-
-      const payload = {
-        name: form.name.value.trim(),
-        idea_initiator: form.idea_initiator.value.trim(),
-        description: form.description.value.trim(),
-        value_added_description: form.value_added_description.value.trim(),
-        use_category: form.use_category.value,
-        ai_feasibility: form.ai_feasibility.value,
-        value_added: form.value_added.value,
-        development_time: form.development_time.value,
-        process_criticality: form.process_criticality.value,
-        process_dependency: form.process_dependency.value,
-        economic_value: form.economic_value.value,
-        golive_date: form.golive_date.value,
-        depends_on: state.formDependsOn,
-      };
-
-      const isEditing = state.editingId !== null;
-      const url = isEditing ? `api/use-cases/${state.editingId}` : "api/use-cases";
-      const method = isEditing ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        errorEl.textContent = body.detail
-          ? typeof body.detail === "string"
-            ? body.detail
-            : JSON.stringify(body.detail)
-          : "Der Anwendungsfall konnte nicht gespeichert werden. Bitte Eingaben prüfen.";
-        errorEl.hidden = false;
-        return;
-      }
-
-      closePanel();
-      await loadUseCases();
     });
   }
 
@@ -1124,6 +772,7 @@
   (async function init() {
     setupForm();
     setupSorting();
+    UseCaseForm.init({ onSaved: loadUseCases });
     await loadCurrentUser();
     await loadOptions();
     await loadUseCases();

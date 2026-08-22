@@ -1,3 +1,4 @@
+import time
 from datetime import date
 from enum import Enum
 
@@ -11,10 +12,16 @@ from starlette.requests import Request
 import auth
 import db
 import scoring
+from config import settings
 
 app = FastAPI(root_path="/ai-use-case-portfolio", title="AI Use Case Evaluator")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+# Cache-busting query param for every static asset link, stamped once per
+# process start - since a deploy is always a restart, this guarantees every
+# browser fetches fresh CSS/JS after a deploy instead of serving a stale
+# cached copy of a same-named file (what just happened in manual testing).
+templates.env.globals["static_version"] = str(int(time.time()))
 
 db.init_db()
 
@@ -69,10 +76,27 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
 
+@app.get("/use-case/{use_case_id}", response_class=HTMLResponse)
+def use_case_detail(request: Request, use_case_id: str):
+    if not db.get_use_case(use_case_id):
+        raise HTTPException(status_code=404, detail="use case not found")
+    return templates.TemplateResponse(request, "use_case.html")
+
+
+@app.get("/board", response_class=HTMLResponse)
+def board_page(request: Request):
+    return templates.TemplateResponse(request, "board.html")
+
+
 @app.get("/api/me")
 def api_me(request: Request):
     user = auth.get_current_user(request)
-    return {"user": user, "is_writer": auth.is_writer(user)}
+    return {
+        "user": user,
+        "is_writer": auth.is_writer(user),
+        "is_prioboard": auth.is_prioboard(user),
+        "is_director": auth.is_director(user),
+    }
 
 
 @app.get("/api/options")
@@ -83,6 +107,57 @@ def api_options():
 @app.get("/api/use-cases")
 def api_list_use_cases():
     return db.list_use_cases()
+
+
+@app.get("/api/use-cases/{use_case_id}")
+def api_get_use_case(use_case_id: str):
+    uc = db.get_use_case(use_case_id)
+    if not uc:
+        raise HTTPException(status_code=404, detail="use case not found")
+    dependents = db.get_dependents(use_case_id)
+    uc["dependent_ids"] = [d["id"] for d in dependents]
+    uc["dependent_names"] = [d["name"] for d in dependents]
+    return uc
+
+
+@app.get("/api/use-cases/{use_case_id}/votes")
+def api_get_votes(use_case_id: str):
+    if not db.get_use_case(use_case_id):
+        raise HTTPException(status_code=404, detail="use case not found")
+    return db.get_votes(use_case_id)
+
+
+class VoteCreate(BaseModel):
+    value: EconomicValue
+
+
+# auth.require_prioboard is referenced twice below (once as the route gate,
+# once to retrieve *who* voted) - FastAPI caches dependency results within a
+# request, so it only runs once per request.
+@app.put("/api/use-cases/{use_case_id}/vote", dependencies=[Depends(auth.require_prioboard)])
+def api_submit_vote(use_case_id: str, payload: VoteCreate, user: str = Depends(auth.require_prioboard)):
+    if not db.get_use_case(use_case_id):
+        raise HTTPException(status_code=404, detail="use case not found")
+    db.upsert_vote(use_case_id, user, payload.value.value)
+    return {"status": "voted"}
+
+
+@app.get("/api/board")
+def api_board():
+    return db.board_candidates(settings.get("top_n", 10))
+
+
+class ReorderRequest(BaseModel):
+    ordered_ids: list[str] = Field(min_length=1)
+
+
+@app.put("/api/board/reorder", dependencies=[Depends(auth.require_board_reorder)])
+def api_reorder_board(payload: ReorderRequest):
+    unknown = set(payload.ordered_ids) - db.existing_ids()
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unbekannte ID(en): {', '.join(sorted(unknown))}")
+    db.set_manual_rank(payload.ordered_ids)
+    return {"status": "reordered"}
 
 
 @app.post("/api/use-cases", status_code=201, dependencies=[Depends(auth.require_writer)])

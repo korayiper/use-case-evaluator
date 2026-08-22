@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Priorisierungsboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ static_version }}">
+</head>
+<body>
+<header class="page-header">
+    <h1>Priorisierungsboard</h1>
+</header>
+
+<main class="page-content">
+    <p><a id="back-link" href="{{ request.scope.get('root_path', '') }}/">&larr; Zurück zur Übersicht</a></p>
+
+    <section class="panel">
+        <div class="panel-header">
+            <h2>Priorisierung</h2>
+            <p class="muted-text" id="board-summary"></p>
+        </div>
+        <p class="muted-text" id="board-hint" hidden>
+            Ziehen Sie die Einträge per Drag &amp; Drop, um die Reihenfolge anzupassen. Änderungen werden sofort
+            gespeichert.
+        </p>
+        <ol id="board-list" class="board-list"></ol>
+        <p class="empty-state" id="board-empty" hidden>Keine Anwendungsfälle vorhanden.</p>
+    </section>
+</main>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<script>
+  window.ROOT_PATH = "{{ request.scope.get('root_path', '') }}";
+  window.API_BASE = window.ROOT_PATH + "/api";
+</script>
+<script src="{{ url_for('static', path='common.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', path='board.js') }}?v={{ static_version }}"></script>
+</body>
+</html>

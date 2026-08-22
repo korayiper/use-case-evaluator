@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KI-Anwendungsfälle</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v={{ static_version }}">
+</head>
+<body>
+<header class="page-header">
+    <h1 id="uc-name">Anwendungsfall</h1>
+    <div class="header-actions">
+        <button id="uc-delete-link" class="btn btn-danger" type="button" hidden>Löschen</button>
+        <button id="uc-edit-link" class="btn btn-primary" type="button" hidden>Bearbeiten</button>
+    </div>
+</header>
+
+<main class="page-content">
+    <p><a id="back-link" href="{{ request.scope.get('root_path', '') }}/">&larr; Zurück zur Übersicht</a></p>
+
+    {% include "_use_case_form.html" %}
+
+    <section class="panel">
+        <div class="panel-header">
+            <h2>Übersicht</h2>
+        </div>
+        <div class="detail-grid">
+            <div class="detail-field">
+                <label>Ideengeber</label>
+                <div id="uc-idea-initiator"></div>
+            </div>
+            <div class="detail-field">
+                <label>Nutzungskategorie</label>
+                <div id="uc-use-category"></div>
+            </div>
+            <div class="detail-field">
+                <label>Wirtschaftlicher Nutzen</label>
+                <div id="uc-economic-value"></div>
+            </div>
+            <div class="detail-field">
+                <label>Breitenwirkung/Kultur</label>
+                <div id="uc-value-added"></div>
+            </div>
+            <div class="detail-field">
+                <label>Entwicklungsdauer</label>
+                <div id="uc-development-time"></div>
+            </div>
+            <div class="detail-field">
+                <label>Prozesskritikalität</label>
+                <div id="uc-process-criticality"></div>
+            </div>
+            <div class="detail-field">
+                <label>Prozessabhängigkeit</label>
+                <div id="uc-process-dependency"></div>
+            </div>
+            <div class="detail-field">
+                <label>KI-Umsetzbarkeit</label>
+                <div id="uc-ai-feasibility"></div>
+            </div>
+            <div class="detail-field">
+                <label>Priorität</label>
+                <div id="uc-priority"></div>
+            </div>
+            <div class="detail-field">
+                <label>Start</label>
+                <div id="uc-start"></div>
+            </div>
+            <div class="detail-field">
+                <label>Go-Live</label>
+                <div id="uc-golive"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <h2>Beschreibung</h2>
+        </div>
+        <div id="uc-description" class="detail-text"></div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <h2>Beschreibung Breitenwirkung/Kultur</h2>
+        </div>
+        <div id="uc-value-added-description" class="detail-text"></div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <h2>Abhängigkeiten</h2>
+        </div>
+        <div class="detail-grid">
+            <div class="detail-field">
+                <label>Abhängig von</label>
+                <div id="uc-depends-on"></div>
+            </div>
+            <div class="detail-field">
+                <label>Abhängige Anwendungsfälle</label>
+                <div id="uc-dependents"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<script>
+  window.ROOT_PATH = "{{ request.scope.get('root_path', '') }}";
+  window.API_BASE = window.ROOT_PATH + "/api";
+</script>
+<script src="{{ url_for('static', path='common.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', path='use_case_form.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', path='use_case.js') }}?v={{ static_version }}"></script>
+</body>
+</html>

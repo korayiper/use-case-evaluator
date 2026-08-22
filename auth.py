@@ -38,3 +38,28 @@ def require_writer(request: Request) -> str:
     if not is_writer(user):
         raise HTTPException(status_code=403, detail="Keine Schreibrechte für diesen Anwendungsfall.")
     return user
+
+
+def is_prioboard(user: str) -> bool:
+    return user in settings.get("prioboard_users", [])
+
+
+def is_director(user: str) -> bool:
+    return user in settings.get("directors_users", [])
+
+
+def require_prioboard(request: Request) -> str:
+    user = get_current_user(request)
+    if not is_prioboard(user):
+        raise HTTPException(status_code=403, detail="Nur Mitglieder des Priorisierungsboards dürfen abstimmen.")
+    return user
+
+
+def require_board_reorder(request: Request) -> str:
+    """Prio-board members AND directors may drag-reorder the board - the
+    directors have the final say per business rule, but nothing here
+    distinguishes them once past this gate."""
+    user = get_current_user(request)
+    if not (is_prioboard(user) or is_director(user)):
+        raise HTTPException(status_code=403, detail="Keine Berechtigung zum Neuordnen des Boards.")
+    return user
