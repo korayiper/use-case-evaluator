@@ -47,7 +47,8 @@
 
   // Color/format math and structured-text rendering live in common.js,
   // shared with use_case.js and board.js.
-  const { el, statusColorForPoints, textColorFor, priorityColor, formatDate } = Common;
+  const { el, statusColorForPoints, textColorFor, priorityColor, formatDate, svgEl, moveTooltip, hideTooltip } =
+    Common;
 
   function categoryColor(value) {
     return Common.categoryColor(value, state.options.use_category);
@@ -503,36 +504,14 @@
     moveTooltip(e);
   }
 
-  function moveTooltip(e) {
-    const tooltip = el("tooltip");
-    const offset = 14;
-    let x = e.clientX + offset;
-    let y = e.clientY + offset;
-    if (x + 280 > window.innerWidth) x = e.clientX - 280 - offset;
-    if (y + 260 > window.innerHeight) y = e.clientY - 260 - offset;
-    tooltip.style.left = `${x}px`;
-    tooltip.style.top = `${y}px`;
-  }
-
-  function hideTooltip() {
-    el("tooltip").hidden = true;
-  }
-
   // ---------- dependency graph ----------
 
-  const SVG_NS = "http://www.w3.org/2000/svg";
   const GRAPH_COL_WIDTH = 220;
   const GRAPH_ROW_HEIGHT = 64;
   const GRAPH_NODE_W = 160;
   const GRAPH_NODE_H = 36;
   const GRAPH_MARGIN = 24;
   const GRAPH_COMPONENT_GAP = GRAPH_ROW_HEIGHT / 2;
-
-  function svgEl(tag, attrs = {}) {
-    const node = document.createElementNS(SVG_NS, tag);
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    return node;
-  }
 
   function nodesWithEdges() {
     const ids = new Set();

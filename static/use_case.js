@@ -5,6 +5,8 @@
 
   let options = null;
   let currentUseCase = null;
+  let allUseCases = [];
+  let isWriter = false;
 
   function useCaseIdFromPath() {
     return location.pathname.split("/").filter(Boolean).pop();
@@ -39,6 +41,198 @@
     });
   }
 
+  // Builds a full update payload from the currently-loaded record (same
+  // shape the full add/edit form submits), with just the given field(s)
+  // overridden - reuses the existing full-record PUT endpoint rather than
+  // needing a separate partial-update API.
+  function buildPayload(overrides) {
+    const uc = currentUseCase;
+    return {
+      name: uc.name,
+      idea_initiator: uc.idea_initiator,
+      description: uc.description,
+      value_added_description: uc.value_added_description,
+      use_category: uc.use_category,
+      ai_feasibility: uc.ai_feasibility,
+      value_added: uc.value_added,
+      development_time: uc.development_time,
+      process_criticality: uc.process_criticality,
+      process_dependency: uc.process_dependency,
+      economic_value: uc.economic_value,
+      golive_date: uc.golive_date,
+      depends_on: uc.depends_on,
+      ...overrides,
+    };
+  }
+
+  async function saveField(overrides) {
+    const res = await fetch(`${window.API_BASE}/use-cases/${currentUseCase.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildPayload(overrides)),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const message = body.detail
+        ? typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail)
+        : "Der Wert konnte nicht gespeichert werden.";
+      alert(message);
+      return false;
+    }
+    await loadUseCase();
+    return true;
+  }
+
+  // Click-to-edit for a single-select field: swaps the display chip for a
+  // <select> pre-filled with the current value; picking an option saves
+  // immediately (there's no separate "done editing" moment for a select,
+  // unlike free text - see attachTextEdit). Re-attaching on every render()
+  // would stack listeners on the persistent container, so this uses
+  // `.onclick =` assignment (replaces, never stacks) rather than
+  // addEventListener.
+  function attachSelectEdit(container, { fieldKey, value, fieldOptions, withPoints }) {
+    if (!isWriter) return;
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return; // ignore bubbled clicks from controls already inside
+      let saving = false;
+      const select = document.createElement("select");
+      for (const opt of fieldOptions) {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = withPoints ? `${opt.label} (${opt.points}p)` : opt.label;
+        select.appendChild(option);
+      }
+      select.value = value;
+      container.replaceChildren(select);
+      select.focus();
+      select.addEventListener("change", async () => {
+        saving = true;
+        await saveField({ [fieldKey]: select.value });
+      });
+      select.addEventListener("blur", () => {
+        if (!saving) render(currentUseCase);
+      });
+    };
+  }
+
+  function attachDateEdit(container, { fieldKey, value }) {
+    if (!isWriter) return;
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return; // ignore bubbled clicks from controls already inside
+      let saving = false;
+      const input = document.createElement("input");
+      input.type = "date";
+      input.value = value;
+      container.replaceChildren(input);
+      input.focus();
+      input.addEventListener("change", async () => {
+        saving = true;
+        await saveField({ [fieldKey]: input.value });
+      });
+      input.addEventListener("blur", () => {
+        if (!saving) render(currentUseCase);
+      });
+    };
+  }
+
+  // Click-to-edit for a free-text field: unlike a select, there's no
+  // discrete "value changed" moment to save on, so this shows explicit
+  // Speichern/Abbrechen buttons instead of auto-saving on blur (matches how
+  // Jira itself treats multi-line text fields differently from selects).
+  function attachTextEdit(container, { fieldKey, rawValue }) {
+    if (!isWriter) return;
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return; // ignore bubbled clicks from controls already inside
+      const textarea = document.createElement("textarea");
+      textarea.rows = 4;
+      textarea.value = rawValue || "";
+      const actions = document.createElement("div");
+      actions.className = "form-actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "btn btn-ghost";
+      cancelBtn.textContent = "Abbrechen";
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "btn btn-primary";
+      saveBtn.textContent = "Speichern";
+      actions.append(cancelBtn, saveBtn);
+      container.replaceChildren(textarea, actions);
+      textarea.focus();
+      cancelBtn.addEventListener("click", () => render(currentUseCase));
+      saveBtn.addEventListener("click", async () => {
+        await saveField({ [fieldKey]: textarea.value.trim() });
+      });
+    };
+  }
+
+  // Click-to-edit for depends_on: a multi-select, same "no discrete save
+  // moment" problem as free text, so it gets the same explicit
+  // Speichern/Abbrechen treatment rather than auto-save-per-toggle.
+  //
+  // Deliberately NOT Common.buildCheckboxDropdown here (unlike the filter
+  // bar and the full form): that widget hides its options behind a
+  // collapsed toggle, which only earns its keep when space is tight (7
+  // filters side by side). Here we're already in a dedicated "editing this
+  // field" state with the field's own width to work with, and the widget's
+  // absolutely-positioned dropdown menu doesn't reserve layout space for
+  // itself - in this narrow half-column slot it overlapped the
+  // Speichern/Abbrechen row instead of pushing it down. A plain static
+  // checkbox list avoids that entirely and shows every option at a glance.
+  function attachDependsOnEdit(container, { currentIds }) {
+    if (!isWriter) return;
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return;
+      const options = allUseCases
+        .filter((uc) => uc.id !== currentUseCase.id)
+        .map((uc) => ({ value: uc.id, label: uc.name }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+
+      const list = document.createElement("div");
+      list.className = "depends-on-picker";
+      const checkboxes = options.map((opt) => {
+        const label = document.createElement("label");
+        label.className = "ms-filter-option";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = opt.value;
+        checkbox.checked = currentIds.includes(opt.value);
+        label.append(checkbox, document.createTextNode(opt.label));
+        list.appendChild(label);
+        return checkbox;
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "form-actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "btn btn-ghost";
+      cancelBtn.textContent = "Abbrechen";
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "btn btn-primary";
+      saveBtn.textContent = "Speichern";
+      actions.append(cancelBtn, saveBtn);
+      container.replaceChildren(list, actions);
+
+      cancelBtn.addEventListener("click", () => render(currentUseCase));
+      saveBtn.addEventListener("click", async () => {
+        const editingIds = checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
+        await saveField({ depends_on: editingIds });
+      });
+    };
+  }
+
   function render(uc) {
     document.title = uc.name;
     el("uc-name").textContent = uc.name;
@@ -51,23 +245,76 @@
     categoryChip.style.color = textColorFor(catColor);
     categoryChip.textContent = uc.use_category_label;
     el("uc-use-category").replaceChildren(categoryChip);
+    attachSelectEdit(el("uc-use-category"), {
+      fieldKey: "use_category",
+      value: uc.use_category,
+      fieldOptions: options.use_category,
+      withPoints: false,
+    });
 
     el("uc-economic-value").replaceChildren(
       attrChip(uc.economic_value_label, uc.economic_value_points, options.economic_value)
     );
+    // Once the prio board has voted, economic_value is server-computed from
+    // the vote median (see db._enrich()) - editing it here would have no
+    // effect on the next read, so it stays read-only, same rule as the full
+    // form (use_case_form.js).
+    if (uc.vote_count === 0) {
+      attachSelectEdit(el("uc-economic-value"), {
+        fieldKey: "economic_value",
+        value: uc.economic_value,
+        fieldOptions: options.economic_value,
+        withPoints: true,
+      });
+    }
+
     el("uc-value-added").replaceChildren(attrChip(uc.value_added_label, uc.value_added_points, options.value_added));
+    attachSelectEdit(el("uc-value-added"), {
+      fieldKey: "value_added",
+      value: uc.value_added,
+      fieldOptions: options.value_added,
+      withPoints: true,
+    });
+
     el("uc-development-time").replaceChildren(
       attrChip(uc.development_time_label, uc.development_time_points, options.development_time)
     );
+    attachSelectEdit(el("uc-development-time"), {
+      fieldKey: "development_time",
+      value: uc.development_time,
+      fieldOptions: options.development_time,
+      withPoints: true,
+    });
+
     el("uc-process-criticality").replaceChildren(
       attrChip(uc.process_criticality_label, uc.process_criticality_points, options.process_criticality)
     );
+    attachSelectEdit(el("uc-process-criticality"), {
+      fieldKey: "process_criticality",
+      value: uc.process_criticality,
+      fieldOptions: options.process_criticality,
+      withPoints: true,
+    });
+
     el("uc-process-dependency").replaceChildren(
       attrChip(uc.process_dependency_label, uc.process_dependency_points, options.process_dependency)
     );
+    attachSelectEdit(el("uc-process-dependency"), {
+      fieldKey: "process_dependency",
+      value: uc.process_dependency,
+      fieldOptions: options.process_dependency,
+      withPoints: true,
+    });
+
     el("uc-ai-feasibility").replaceChildren(
       attrChip(uc.ai_feasibility_label, uc.ai_feasibility_rank, options.ai_feasibility, "rank")
     );
+    attachSelectEdit(el("uc-ai-feasibility"), {
+      fieldKey: "ai_feasibility",
+      value: uc.ai_feasibility,
+      fieldOptions: options.ai_feasibility,
+      withPoints: true,
+    });
 
     const priorityChip = document.createElement("span");
     priorityChip.className = "chip priority-chip";
@@ -90,11 +337,13 @@
     } else {
       startEl.textContent = formatDate(uc.start_date);
     }
-    el("uc-golive").textContent = formatDate(uc.golive_date);
 
-    for (const [containerId, text] of [
-      ["uc-description", uc.description],
-      ["uc-value-added-description", uc.value_added_description],
+    el("uc-golive").textContent = formatDate(uc.golive_date);
+    attachDateEdit(el("uc-golive"), { fieldKey: "golive_date", value: uc.golive_date });
+
+    for (const [containerId, fieldKey, text] of [
+      ["uc-description", "description", uc.description],
+      ["uc-value-added-description", "value_added_description", uc.value_added_description],
     ]) {
       const container = el(containerId);
       renderStructuredText(container, text);
@@ -104,9 +353,11 @@
       } else {
         container.className = "detail-text";
       }
+      attachTextEdit(container, { fieldKey, rawValue: text });
     }
 
     renderLinkList(el("uc-depends-on"), uc.depends_on, uc.depends_on_names);
+    attachDependsOnEdit(el("uc-depends-on"), { currentIds: uc.depends_on });
     renderLinkList(el("uc-dependents"), uc.dependent_ids, uc.dependent_names);
   }
 
@@ -118,6 +369,8 @@
       fetch(`${window.API_BASE}/use-cases`).then((r) => r.json()),
     ]);
     currentUseCase = uc;
+    allUseCases = useCases;
+    isWriter = me.is_writer;
     UseCaseForm.setUseCases(useCases);
     render(uc);
     el("uc-edit-link").hidden = !me.is_writer;

@@ -18,7 +18,7 @@ writer_users = ["a20779"]
 # Phase 1 (same pattern as writer_users): who can vote on a use case's
 # economic value, and who can drag-reorder the prioritization board once
 # short-listed. Edit these lists to add/remove members.
-prioboard_users = ["a20779"]
+prioboard_users = ["a20779", "a20778"]
 directors_users = []
 # How many top-priority use cases move onto the prioritization board.
 top_n = 10

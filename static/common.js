@@ -104,6 +104,33 @@ window.Common = (() => {
     return new Date(isoDate).toLocaleDateString(LOCALE, { year: "numeric", month: "2-digit", day: "2-digit" });
   }
 
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  function svgEl(tag, attrs = {}) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    return node;
+  }
+
+  // Positions the shared #tooltip div near the cursor, flipping to the other
+  // side of the pointer if it would overflow the viewport. Content-building
+  // stays page-specific (what a tooltip shows differs per chart); this is
+  // just the generic placement math.
+  function moveTooltip(e) {
+    const tooltip = el("tooltip");
+    const offset = 14;
+    let x = e.clientX + offset;
+    let y = e.clientY + offset;
+    if (x + 280 > window.innerWidth) x = e.clientX - 280 - offset;
+    if (y + 260 > window.innerHeight) y = e.clientY - 260 - offset;
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top = `${y}px`;
+  }
+
+  function hideTooltip() {
+    el("tooltip").hidden = true;
+  }
+
   // Convention: blank-line-separated blocks -> <p>; a block becomes a <ul> of
   // <li> only if every non-empty line in it starts with "-" or "*" (marker +
   // following whitespace stripped); otherwise its lines join into one <p>.
@@ -292,5 +319,8 @@ window.Common = (() => {
     closeAllFilterMenus,
     buildCheckboxDropdown,
     setupHelpPanels,
+    svgEl,
+    moveTooltip,
+    hideTooltip,
   };
 })();
