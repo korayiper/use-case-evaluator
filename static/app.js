@@ -713,8 +713,9 @@
 
   // ---------- form ----------
   // Form markup and logic (open/close/submit) live in use_case_form.js,
-  // shared with the detail page's inline editing - this page just wires its
-  // own "+ Neuer Anwendungsfall" toggle to it.
+  // used here for adding new use cases - this page just wires its own
+  // "+ Neuer Anwendungsfall" toggle to it. Editing existing use cases happens
+  // inline on the detail page instead.
 
   function setupForm() {
     const panel = el("add-panel");

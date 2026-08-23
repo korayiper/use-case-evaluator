@@ -119,6 +119,32 @@
     };
   }
 
+  function attachInputEdit(container, { fieldKey, value }) {
+    if (!isWriter) return;
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return; // ignore bubbled clicks from controls already inside
+      let saving = false;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = value;
+      container.replaceChildren(input);
+      input.focus();
+      input.select();
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur();
+      });
+      input.addEventListener("change", async () => {
+        saving = true;
+        await saveField({ [fieldKey]: input.value.trim() });
+      });
+      input.addEventListener("blur", () => {
+        if (!saving) render(currentUseCase);
+      });
+    };
+  }
+
   function attachDateEdit(container, { fieldKey, value }) {
     if (!isWriter) return;
     container.classList.add("editable-field");
@@ -235,7 +261,9 @@
   function render(uc) {
     document.title = uc.name;
     el("uc-name").textContent = uc.name;
+    attachInputEdit(el("uc-name"), { fieldKey: "name", value: uc.name });
     el("uc-idea-initiator").textContent = uc.idea_initiator;
+    attachInputEdit(el("uc-idea-initiator"), { fieldKey: "idea_initiator", value: uc.idea_initiator });
 
     const categoryChip = document.createElement("span");
     categoryChip.className = "chip attr-chip";
@@ -370,9 +398,7 @@
     currentUseCase = uc;
     allUseCases = useCases;
     isWriter = me.is_writer;
-    UseCaseForm.setUseCases(useCases);
     render(uc);
-    el("uc-edit-link").hidden = !me.is_writer;
     el("uc-delete-link").hidden = !me.is_writer;
   }
 
@@ -386,13 +412,8 @@
   (async function init() {
     const res = await fetch(`${window.API_BASE}/options`);
     options = await res.json();
-    UseCaseForm.setOptions(options);
     Common.setupHelpPanels(options); // safe to call once here - no filters on this page competing for the scan
-    UseCaseForm.init({ onSaved: loadUseCase });
 
-    el("uc-edit-link").addEventListener("click", () => {
-      if (currentUseCase) UseCaseForm.openEdit(currentUseCase);
-    });
     el("uc-delete-link").addEventListener("click", deleteCurrentUseCase);
 
     await loadUseCase();

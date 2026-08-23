@@ -11,14 +11,11 @@
     <h1 id="uc-name">Anwendungsfall</h1>
     <div class="header-actions">
         <button id="uc-delete-link" class="btn btn-danger" type="button" hidden>Löschen</button>
-        <button id="uc-edit-link" class="btn btn-primary" type="button" hidden>Bearbeiten</button>
     </div>
 </header>
 
 <main class="page-content">
     <p><a id="back-link" href="{{ request.scope.get('root_path', '') }}/">&larr; Zurück zur Übersicht</a></p>
-
-    {% include "_use_case_form.html" %}
 
     <section class="panel">
         <div class="panel-header">
@@ -113,7 +110,6 @@
   window.API_BASE = window.ROOT_PATH + "/api";
 </script>
 <script src="{{ url_for('static', path='common.js') }}?v={{ static_version }}"></script>
-<script src="{{ url_for('static', path='use_case_form.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', path='use_case.js') }}?v={{ static_version }}"></script>
 </body>
 </html>

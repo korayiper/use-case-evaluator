@@ -1,7 +1,6 @@
-// Shared add/edit-use-case form controller. Both index.html (list page) and
-// use_case.html (detail page) include the same form markup
-// (_use_case_form.html) and load this script to drive it, so editing works
-// identically - and inline, without navigating away - on either page.
+// New-use-case form controller, used by the list page's
+// "+ Neuer Anwendungsfall" flow. Editing existing use cases happens inline
+// on the detail page instead (see use_case.js), not through this form.
 window.UseCaseForm = (() => {
   "use strict";
 
@@ -20,7 +19,6 @@ window.UseCaseForm = (() => {
   const state = {
     options: null,
     useCases: [],
-    editingId: null,
     formDependsOn: [],
     onSaved: null,
   };
@@ -45,7 +43,6 @@ window.UseCaseForm = (() => {
   function buildDependencyPicker() {
     buildCheckboxDropdown(el("f-depends-on"), {
       options: state.useCases
-        .filter((uc) => uc.id !== state.editingId)
         .map((uc) => ({ value: uc.id, label: uc.name }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       isSelected: (v) => state.formDependsOn.includes(v),
@@ -67,56 +64,20 @@ window.UseCaseForm = (() => {
     panel.hidden = true;
     el("add-form").reset();
     el("form-error").hidden = true;
-    state.editingId = null;
     state.formDependsOn = [];
   }
 
   function openAdd() {
-    state.editingId = null;
     state.formDependsOn = [];
     el("add-form").reset();
-    el("add-form").economic_value.disabled = false;
     el("form-error").hidden = true;
-    el("add-panel-title").textContent = "Neuer Anwendungsfall";
-    el("submit-add").textContent = "Anwendungsfall speichern";
     el("add-panel").hidden = false;
     buildDependencyPicker();
     el("f-name").focus();
   }
 
-  function openEdit(uc) {
-    const form = el("add-form");
-    state.editingId = uc.id;
-    state.formDependsOn = [...uc.depends_on];
-    el("form-error").hidden = true;
-    form.name.value = uc.name;
-    form.idea_initiator.value = uc.idea_initiator;
-    form.description.value = uc.description || "";
-    form.value_added_description.value = uc.value_added_description || "";
-    form.use_category.value = uc.use_category;
-    form.ai_feasibility.value = uc.ai_feasibility;
-    form.value_added.value = uc.value_added;
-    form.development_time.value = uc.development_time;
-    form.process_criticality.value = uc.process_criticality;
-    form.process_dependency.value = uc.process_dependency;
-    form.economic_value.value = uc.economic_value;
-    // Once the prio board has voted on a use case, its economic_value is the
-    // vote median (db._enrich()) - the manual dropdown becomes informational
-    // only, editing it here would have no effect on the next read anyway.
-    form.economic_value.disabled = uc.vote_count > 0;
-    form.golive_date.value = uc.golive_date;
-    el("add-panel-title").textContent = "Anwendungsfall bearbeiten";
-    el("submit-add").textContent = "Änderungen speichern";
-    const panel = el("add-panel");
-    panel.hidden = false;
-    buildDependencyPicker();
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    el("f-name").focus();
-  }
-
-  // onSaved(): called after a successful create/update, once the panel is
-  // already closed - the caller decides what "refresh" means for its page
-  // (reload the list, or re-fetch this one detail view in place).
+  // onSaved(): called after a successful create, once the panel is already
+  // closed - the caller decides what "refresh" means for its page.
   function init({ onSaved }) {
     state.onSaved = onSaved;
     el("cancel-add").addEventListener("click", close);
@@ -143,12 +104,8 @@ window.UseCaseForm = (() => {
         depends_on: state.formDependsOn,
       };
 
-      const isEditing = state.editingId !== null;
-      const url = isEditing ? `${window.API_BASE}/use-cases/${state.editingId}` : `${window.API_BASE}/use-cases`;
-      const method = isEditing ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
+      const res = await fetch(`${window.API_BASE}/use-cases`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -169,5 +126,5 @@ window.UseCaseForm = (() => {
     });
   }
 
-  return { setOptions, setUseCases, openAdd, openEdit, close, init };
+  return { setOptions, setUseCases, openAdd, close, init };
 })();
