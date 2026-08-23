@@ -187,12 +187,11 @@
   // itself - in this narrow half-column slot it overlapped the
   // Speichern/Abbrechen row instead of pushing it down. A plain static
   // checkbox list avoids that entirely and shows every option at a glance.
-  function attachDependsOnEdit(container, { currentIds }) {
+  function attachDependsOnEdit(container, editBtn, { currentIds }) {
     if (!isWriter) return;
-    container.classList.add("editable-field");
-    container.title = "Klicken zum Bearbeiten";
-    container.onclick = (e) => {
-      if (e.target.closest("select, textarea, input, button")) return;
+    editBtn.hidden = false;
+    editBtn.onclick = () => {
+      editBtn.hidden = true;
       const options = allUseCases
         .filter((uc) => uc.id !== currentUseCase.id)
         .map((uc) => ({ value: uc.id, label: uc.name }))
@@ -357,7 +356,7 @@
     }
 
     renderLinkList(el("uc-depends-on"), uc.depends_on, uc.depends_on_names);
-    attachDependsOnEdit(el("uc-depends-on"), { currentIds: uc.depends_on });
+    attachDependsOnEdit(el("uc-depends-on"), el("uc-depends-on-edit"), { currentIds: uc.depends_on });
     renderLinkList(el("uc-dependents"), uc.dependent_ids, uc.dependent_names);
   }
 

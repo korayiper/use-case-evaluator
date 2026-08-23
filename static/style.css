@@ -424,6 +424,18 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
 }
 .detail-field { display: flex; flex-direction: column; gap: 4px; }
 .detail-field label { font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary); }
+.field-header { display: flex; align-items: center; gap: 6px; }
+.field-edit-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.field-edit-btn:hover { color: var(--text-primary); background: var(--series-1-wash); }
 .editable-field { cursor: pointer; border-radius: 6px; padding: 2px 4px; margin: -2px -4px; }
 .editable-field:hover { outline: 1px dashed var(--baseline); }
 .editable-field > select, .editable-field > input, .editable-field > textarea { width: 100%; }
