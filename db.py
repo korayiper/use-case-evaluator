@@ -1,23 +1,23 @@
-import sqlite3
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
+
+from sqlalchemy import create_engine, delete, event, insert, or_, select, text, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import URL
 
 import scoring
 from config import settings
+from models import economic_value_votes, use_case_dependencies, use_cases
 
 # "sqlite" (default, used in dev) or "mssql" (prod) - see settings.toml /
-# .secrets.toml.example. Everything below this point is written against the
-# DB-API surface both sqlite3 and pyodbc share (conn.execute(sql, params),
-# cursor.description, cursor.fetchall/fetchone, "?" placeholders,
-# connection-as-transaction-context-manager), so the CRUD functions never
-# need to know which backend is active.
+# .secrets.toml.example. Everything below is written against SQLAlchemy Core
+# (select/insert/update/delete constructs against the Table objects in
+# models.py), so the CRUD functions never need to know which backend is
+# active - SQLAlchemy's dialect layer handles that.
 DB_BACKEND = settings.get("db_backend", "sqlite").lower()
 
 SQLITE_PATH = Path(settings.get("sqlite_path", Path(__file__).parent / "usecases.db"))
-
-if DB_BACKEND == "mssql":
-    import pyodbc  # only required when db_backend=mssql - not installed for dev/sqlite
 
 
 def _mssql_connection_string() -> str:
@@ -35,156 +35,55 @@ def _mssql_connection_string() -> str:
     )
 
 
-def get_connection():
+def _engine_url():
     if DB_BACKEND == "mssql":
-        return pyodbc.connect(_mssql_connection_string())
-    conn = sqlite3.connect(SQLITE_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+        return URL.create("mssql+pyodbc", query={"odbc_connect": _mssql_connection_string()})
+    return f"sqlite:///{SQLITE_PATH}"
 
 
-# ids are client-generated UUIDs (str(uuid.uuid4())), not DB auto-increment/
-# IDENTITY. This sidesteps retrieving a DB-generated id after INSERT
-# entirely (no lastrowid/SCOPE_IDENTITY()/OUTPUT-clause dance, no
-# backend-specific code for it) - the id is known before the INSERT even
-# runs, identically on every backend.
-#
-# No ON DELETE CASCADE here on purpose: use_case_dependencies references
-# use_cases twice (use_case_id and depends_on_id). SQL Server refuses to
-# create two cascading FKs to the same table from the same table ("may cause
-# cycles or multiple cascade paths"). delete_use_case() below cleans up both
-# directions explicitly instead, which works identically on both backends
-# rather than relying on DB-level cascade semantics that differ between them.
-#
-# economic_value is a fixed 5-class attribute (like value_added etc.),
-# stored as its string key and scored via scoring.py.
-SQLITE_SCHEMA = [
-    """
-    CREATE TABLE IF NOT EXISTS use_cases (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        idea_initiator TEXT NOT NULL,
-        description TEXT,
-        value_added_description TEXT,
-        use_category TEXT NOT NULL,
-        ai_feasibility TEXT NOT NULL,
-        value_added TEXT NOT NULL,
-        development_time TEXT NOT NULL,
-        process_criticality TEXT NOT NULL,
-        process_dependency TEXT NOT NULL,
-        economic_value TEXT NOT NULL,
-        golive_date TEXT NOT NULL,
-        manual_rank INTEGER,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS use_case_dependencies (
-        use_case_id TEXT NOT NULL,
-        depends_on_id TEXT NOT NULL,
-        PRIMARY KEY (use_case_id, depends_on_id),
-        FOREIGN KEY (use_case_id) REFERENCES use_cases(id),
-        FOREIGN KEY (depends_on_id) REFERENCES use_cases(id)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS economic_value_votes (
-        use_case_id TEXT NOT NULL,
-        voter TEXT NOT NULL,
-        value TEXT NOT NULL,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        PRIMARY KEY (use_case_id, voter),
-        FOREIGN KEY (use_case_id) REFERENCES use_cases(id)
-    )
-    """,
-]
+ENGINE = create_engine(_engine_url(), future=True)
 
-MSSQL_SCHEMA = [
-    """
-    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.use_cases') AND type = N'U')
-    CREATE TABLE dbo.use_cases (
-        id NVARCHAR(36) PRIMARY KEY,
-        name NVARCHAR(200) NOT NULL,
-        idea_initiator NVARCHAR(200) NOT NULL,
-        description NVARCHAR(MAX),
-        value_added_description NVARCHAR(MAX),
-        use_category NVARCHAR(50) NOT NULL,
-        ai_feasibility NVARCHAR(50) NOT NULL,
-        value_added NVARCHAR(50) NOT NULL,
-        development_time NVARCHAR(50) NOT NULL,
-        process_criticality NVARCHAR(50) NOT NULL,
-        process_dependency NVARCHAR(50) NOT NULL,
-        economic_value NVARCHAR(50) NOT NULL,
-        golive_date NVARCHAR(10) NOT NULL,
-        manual_rank INT NULL,
-        created_at DATETIME2 NOT NULL DEFAULT (SYSUTCDATETIME())
-    )
-    """,
-    """
-    IF NOT EXISTS (
-        SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.use_case_dependencies') AND type = N'U'
-    )
-    CREATE TABLE dbo.use_case_dependencies (
-        use_case_id NVARCHAR(36) NOT NULL,
-        depends_on_id NVARCHAR(36) NOT NULL,
-        CONSTRAINT PK_use_case_dependencies PRIMARY KEY (use_case_id, depends_on_id),
-        CONSTRAINT FK_use_case_dependencies_use_case FOREIGN KEY (use_case_id) REFERENCES dbo.use_cases(id),
-        CONSTRAINT FK_use_case_dependencies_depends_on FOREIGN KEY (depends_on_id) REFERENCES dbo.use_cases(id)
-    )
-    """,
-    """
-    IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.economic_value_votes') AND type = N'U')
-    CREATE TABLE dbo.economic_value_votes (
-        use_case_id NVARCHAR(36) NOT NULL,
-        voter NVARCHAR(200) NOT NULL,
-        value NVARCHAR(50) NOT NULL,
-        updated_at DATETIME2 NOT NULL DEFAULT (SYSUTCDATETIME()),
-        CONSTRAINT PK_economic_value_votes PRIMARY KEY (use_case_id, voter),
-        CONSTRAINT FK_economic_value_votes_use_case FOREIGN KEY (use_case_id) REFERENCES dbo.use_cases(id)
-    )
-    """,
-]
+if DB_BACKEND != "mssql":
+    # sqlite defaults foreign-key enforcement to OFF per-connection; since
+    # the engine pools/reuses DBAPI connections, this has to fire on every
+    # new one, not just once at import time - the standard SQLAlchemy recipe
+    # for this (replaces the old get_connection()'s per-call PRAGMA).
+    @event.listens_for(ENGINE, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.close()
 
 
-def init_db() -> None:
-    statements = MSSQL_SCHEMA if DB_BACKEND == "mssql" else SQLITE_SCHEMA
-    with get_connection() as conn:
-        for statement in statements:
-            conn.execute(statement)
+def _all(conn, stmt) -> list[dict]:
+    return [dict(row) for row in conn.execute(stmt).mappings()]
 
 
-def _rows_as_dicts(cursor) -> list[dict]:
-    columns = [col[0] for col in cursor.description]
-    return [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-
-def _row_as_dict(cursor) -> dict | None:
-    columns = [col[0] for col in cursor.description]
-    row = cursor.fetchone()
-    return dict(zip(columns, row)) if row else None
+def _one(conn, stmt) -> dict | None:
+    row = conn.execute(stmt).mappings().first()
+    return dict(row) if row is not None else None
 
 
 def existing_ids() -> set[str]:
-    with get_connection() as conn:
-        rows = _rows_as_dicts(conn.execute("SELECT id FROM use_cases"))
-    return {r["id"] for r in rows}
+    with ENGINE.connect() as conn:
+        return {r["id"] for r in _all(conn, select(use_cases.c.id))}
 
 
 def _set_dependencies(conn, use_case_id: str, depends_on_ids: list[str]) -> None:
     """Replace use_case_id's outgoing dependency edges. Runs on the caller's
     open connection so it's atomic with the row insert/update."""
-    conn.execute("DELETE FROM use_case_dependencies WHERE use_case_id = ?", (use_case_id,))
-    for dep_id in depends_on_ids:
+    conn.execute(delete(use_case_dependencies).where(use_case_dependencies.c.use_case_id == use_case_id))
+    if depends_on_ids:
         conn.execute(
-            "INSERT INTO use_case_dependencies (use_case_id, depends_on_id) VALUES (?, ?)",
-            (use_case_id, dep_id),
+            insert(use_case_dependencies),
+            [{"use_case_id": use_case_id, "depends_on_id": dep_id} for dep_id in depends_on_ids],
         )
 
 
 def _all_dependencies() -> dict[str, list[str]]:
     """use_case_id -> list of its prerequisite ids, for every use case."""
-    with get_connection() as conn:
-        rows = _rows_as_dicts(conn.execute("SELECT use_case_id, depends_on_id FROM use_case_dependencies"))
+    with ENGINE.connect() as conn:
+        rows = _all(conn, select(use_case_dependencies.c.use_case_id, use_case_dependencies.c.depends_on_id))
     graph: dict[str, list[str]] = {}
     for r in rows:
         graph.setdefault(r["use_case_id"], []).append(r["depends_on_id"])
@@ -227,30 +126,24 @@ def add_use_case(
     depends_on_ids=None,
 ) -> str:
     use_case_id = str(uuid.uuid4())
-    with get_connection() as conn:
+    with ENGINE.begin() as conn:
         conn.execute(
-            """
-            INSERT INTO use_cases
-                (id, name, idea_initiator, description, value_added_description, use_category, ai_feasibility,
-                 value_added, development_time, process_criticality, process_dependency, economic_value,
-                 golive_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                use_case_id,
-                name,
-                idea_initiator,
-                description,
-                value_added_description,
-                use_category,
-                ai_feasibility,
-                value_added,
-                development_time,
-                process_criticality,
-                process_dependency,
-                economic_value,
-                golive_date,
-            ),
+            insert(use_cases),
+            {
+                "id": use_case_id,
+                "name": name,
+                "idea_initiator": idea_initiator,
+                "description": description,
+                "value_added_description": value_added_description,
+                "use_category": use_category,
+                "ai_feasibility": ai_feasibility,
+                "value_added": value_added,
+                "development_time": development_time,
+                "process_criticality": process_criticality,
+                "process_dependency": process_dependency,
+                "economic_value": economic_value,
+                "golive_date": golive_date,
+            },
         )
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
     return use_case_id
@@ -272,53 +165,44 @@ def update_use_case(
     golive_date,
     depends_on_ids=None,
 ):
-    with get_connection() as conn:
+    with ENGINE.begin() as conn:
         conn.execute(
-            """
-            UPDATE use_cases SET
-                name = ?, idea_initiator = ?, description = ?, value_added_description = ?, use_category = ?,
-                ai_feasibility = ?, value_added = ?, development_time = ?, process_criticality = ?,
-                process_dependency = ?, economic_value = ?, golive_date = ?
-            WHERE id = ?
-            """,
-            (
-                name,
-                idea_initiator,
-                description,
-                value_added_description,
-                use_category,
-                ai_feasibility,
-                value_added,
-                development_time,
-                process_criticality,
-                process_dependency,
-                economic_value,
-                golive_date,
-                use_case_id,
-            ),
+            update(use_cases)
+            .where(use_cases.c.id == use_case_id)
+            .values(
+                name=name,
+                idea_initiator=idea_initiator,
+                description=description,
+                value_added_description=value_added_description,
+                use_category=use_category,
+                ai_feasibility=ai_feasibility,
+                value_added=value_added,
+                development_time=development_time,
+                process_criticality=process_criticality,
+                process_dependency=process_dependency,
+                economic_value=economic_value,
+                golive_date=golive_date,
+            )
         )
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
 
 
 def get_use_case(use_case_id: str) -> dict | None:
-    with get_connection() as conn:
-        row = _row_as_dict(conn.execute("SELECT * FROM use_cases WHERE id = ?", (use_case_id,)))
+    with ENGINE.connect() as conn:
+        row = _one(conn, select(use_cases).where(use_cases.c.id == use_case_id))
         if not row:
             return None
-        dep_rows = _rows_as_dicts(
-            conn.execute(
-                """
-                SELECT d.depends_on_id, u.name
-                FROM use_case_dependencies d
-                JOIN use_cases u ON u.id = d.depends_on_id
-                WHERE d.use_case_id = ?
-                ORDER BY u.name
-                """,
-                (use_case_id,),
+        dep_rows = _all(
+            conn,
+            select(use_case_dependencies.c.depends_on_id, use_cases.c.name)
+            .select_from(
+                use_case_dependencies.join(use_cases, use_cases.c.id == use_case_dependencies.c.depends_on_id)
             )
+            .where(use_case_dependencies.c.use_case_id == use_case_id)
+            .order_by(use_cases.c.name),
         )
-        vote_rows = _rows_as_dicts(
-            conn.execute("SELECT value FROM economic_value_votes WHERE use_case_id = ?", (use_case_id,))
+        vote_rows = _all(
+            conn, select(economic_value_votes.c.value).where(economic_value_votes.c.use_case_id == use_case_id)
         )
     return _enrich(
         row,
@@ -331,29 +215,27 @@ def get_use_case(use_case_id: str) -> dict | None:
 def get_dependents(use_case_id: str) -> list[dict]:
     """Use cases that declare use_case_id as a prerequisite - the reverse
     of depends_on."""
-    with get_connection() as conn:
-        rows = _rows_as_dicts(
-            conn.execute(
-                """
-                SELECT u.id, u.name
-                FROM use_case_dependencies d
-                JOIN use_cases u ON u.id = d.use_case_id
-                WHERE d.depends_on_id = ?
-                ORDER BY u.name
-                """,
-                (use_case_id,),
-            )
+    with ENGINE.connect() as conn:
+        return _all(
+            conn,
+            select(use_cases.c.id, use_cases.c.name)
+            .select_from(use_case_dependencies.join(use_cases, use_cases.c.id == use_case_dependencies.c.use_case_id))
+            .where(use_case_dependencies.c.depends_on_id == use_case_id)
+            .order_by(use_cases.c.name),
         )
-    return rows
 
 
 def delete_use_case(use_case_id: str) -> None:
-    with get_connection() as conn:
+    with ENGINE.begin() as conn:
         conn.execute(
-            "DELETE FROM use_case_dependencies WHERE use_case_id = ? OR depends_on_id = ?",
-            (use_case_id, use_case_id),
+            delete(use_case_dependencies).where(
+                or_(
+                    use_case_dependencies.c.use_case_id == use_case_id,
+                    use_case_dependencies.c.depends_on_id == use_case_id,
+                )
+            )
         )
-        conn.execute("DELETE FROM use_cases WHERE id = ?", (use_case_id,))
+        conn.execute(delete(use_cases).where(use_cases.c.id == use_case_id))
 
 
 def _enrich(
@@ -411,19 +293,17 @@ def _enrich(
 
 
 def list_use_cases() -> list[dict]:
-    with get_connection() as conn:
-        rows = _rows_as_dicts(conn.execute("SELECT * FROM use_cases ORDER BY golive_date"))
-        dep_rows = _rows_as_dicts(
-            conn.execute(
-                """
-                SELECT d.use_case_id, d.depends_on_id, u.name
-                FROM use_case_dependencies d
-                JOIN use_cases u ON u.id = d.depends_on_id
-                ORDER BY u.name
-                """
+    with ENGINE.connect() as conn:
+        rows = _all(conn, select(use_cases).order_by(use_cases.c.golive_date))
+        dep_rows = _all(
+            conn,
+            select(use_case_dependencies.c.use_case_id, use_case_dependencies.c.depends_on_id, use_cases.c.name)
+            .select_from(
+                use_case_dependencies.join(use_cases, use_cases.c.id == use_case_dependencies.c.depends_on_id)
             )
+            .order_by(use_cases.c.name),
         )
-        vote_rows = _rows_as_dicts(conn.execute("SELECT use_case_id, value FROM economic_value_votes"))
+        vote_rows = _all(conn, select(economic_value_votes.c.use_case_id, economic_value_votes.c.value))
     ids_map: dict[str, list[str]] = {}
     names_map: dict[str, list[str]] = {}
     for r in dep_rows:
@@ -439,39 +319,43 @@ def list_use_cases() -> list[dict]:
 
 
 # Upsert syntax genuinely isn't portable across sqlite/mssql - this is the
-# one deliberate backend-specific exception to the shared DB-API convention
+# one deliberate backend-specific exception to the shared-query convention
 # documented at the top of this file.
 def upsert_vote(use_case_id: str, voter: str, value: str) -> None:
-    with get_connection() as conn:
+    now = datetime.now(timezone.utc).isoformat()
+    with ENGINE.begin() as conn:
         if DB_BACKEND == "mssql":
             conn.execute(
-                """
-                MERGE dbo.economic_value_votes AS target
-                USING (SELECT ? AS use_case_id, ? AS voter, ? AS value) AS src
-                ON target.use_case_id = src.use_case_id AND target.voter = src.voter
-                WHEN MATCHED THEN UPDATE SET value = src.value, updated_at = SYSUTCDATETIME()
-                WHEN NOT MATCHED THEN INSERT (use_case_id, voter, value) VALUES (src.use_case_id, src.voter, src.value);
-                """,
-                (use_case_id, voter, value),
+                text(
+                    """
+                    MERGE dbo.economic_value_votes AS target
+                    USING (SELECT :use_case_id AS use_case_id, :voter AS voter, :value AS value) AS src
+                    ON target.use_case_id = src.use_case_id AND target.voter = src.voter
+                    WHEN MATCHED THEN UPDATE SET value = src.value, updated_at = :updated_at
+                    WHEN NOT MATCHED THEN INSERT (use_case_id, voter, value, updated_at)
+                        VALUES (src.use_case_id, src.voter, src.value, :updated_at);
+                    """
+                ),
+                {"use_case_id": use_case_id, "voter": voter, "value": value, "updated_at": now},
             )
         else:
-            conn.execute(
-                """
-                INSERT INTO economic_value_votes (use_case_id, voter, value, updated_at)
-                VALUES (?, ?, ?, datetime('now'))
-                ON CONFLICT (use_case_id, voter) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-                """,
-                (use_case_id, voter, value),
+            stmt = sqlite_insert(economic_value_votes).values(
+                use_case_id=use_case_id, voter=voter, value=value, updated_at=now
             )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[economic_value_votes.c.use_case_id, economic_value_votes.c.voter],
+                set_={"value": stmt.excluded.value, "updated_at": stmt.excluded.updated_at},
+            )
+            conn.execute(stmt)
 
 
 def get_votes(use_case_id: str) -> list[dict]:
-    with get_connection() as conn:
-        return _rows_as_dicts(
-            conn.execute(
-                "SELECT voter, value, updated_at FROM economic_value_votes WHERE use_case_id = ? ORDER BY voter",
-                (use_case_id,),
-            )
+    with ENGINE.connect() as conn:
+        return _all(
+            conn,
+            select(economic_value_votes.c.voter, economic_value_votes.c.value, economic_value_votes.c.updated_at)
+            .where(economic_value_votes.c.use_case_id == use_case_id)
+            .order_by(economic_value_votes.c.voter),
         )
 
 
@@ -480,13 +364,12 @@ def _votes_for_ids(ids: list[str]) -> dict[str, list[dict]]:
     board_candidates() to show each board member their own current vote."""
     if not ids:
         return {}
-    placeholders = ",".join("?" for _ in ids)
-    with get_connection() as conn:
-        rows = _rows_as_dicts(
-            conn.execute(
-                f"SELECT use_case_id, voter, value FROM economic_value_votes WHERE use_case_id IN ({placeholders})",
-                ids,
-            )
+    with ENGINE.connect() as conn:
+        rows = _all(
+            conn,
+            select(
+                economic_value_votes.c.use_case_id, economic_value_votes.c.voter, economic_value_votes.c.value
+            ).where(economic_value_votes.c.use_case_id.in_(ids)),
         )
     out: dict[str, list[dict]] = {}
     for r in rows:
@@ -497,9 +380,9 @@ def _votes_for_ids(ids: list[str]) -> dict[str, list[dict]]:
 def set_manual_rank(ordered_ids: list[str]) -> None:
     """Full replace: persists ordered_ids' order as 1-based manual_rank.
     Callers always pass the complete current board list."""
-    with get_connection() as conn:
+    with ENGINE.begin() as conn:
         for i, use_case_id in enumerate(ordered_ids, start=1):
-            conn.execute("UPDATE use_cases SET manual_rank = ? WHERE id = ?", (i, use_case_id))
+            conn.execute(update(use_cases).where(use_cases.c.id == use_case_id).values(manual_rank=i))
 
 
 def board_candidates(top_n: int) -> list[dict]:

@@ -23,8 +23,6 @@ templates = Jinja2Templates(directory="templates")
 # cached copy of a same-named file (what just happened in manual testing).
 templates.env.globals["static_version"] = str(int(time.time()))
 
-db.init_db()
-
 
 def _str_enum(name: str, keys) -> type[Enum]:
     members = {k.upper().replace(" ", "_").replace("-", "_"): k for k in keys}
