@@ -188,7 +188,7 @@
     };
   }
 
-  function renderVoteBreakdown(container) {
+  function renderVoteBreakdown(container, uc) {
     const votesByDept = {};
     for (const v of voteData.votes) votesByDept[v.department] = v;
     const allDepts = [...voteData.votes.map((v) => v.department), ...voteData.missing_departments].sort();
@@ -216,6 +216,20 @@
         attachVoteEdit(valueEl, { department: dept, value: vote ? vote.value : "" });
       }
     }
+
+    // Provisional the moment a single vote exists (matches the rest of the
+    // app's "show the real, partial number rather than hiding it" stance) -
+    // this is the same value that's already feeding the priority score.
+    const summary = document.createElement("div");
+    summary.className = "vote-summary";
+    if (uc.vote_count > 0) {
+      const prefix = uc.vote_count < 6 ? "Median (vorläufig)" : "Median";
+      summary.textContent = `${prefix}: ${uc.economic_value_label} (${uc.economic_value_points}p)`;
+    } else {
+      summary.className += " muted-text";
+      summary.textContent = "Median: Ausstehend";
+    }
+    container.appendChild(summary);
   }
 
   // Click-to-edit for a single-select field: swaps the display chip for a
@@ -412,7 +426,7 @@
       withPoints: false,
     });
 
-    renderVoteBreakdown(el("uc-economic-value"));
+    renderVoteBreakdown(el("uc-economic-value"), uc);
 
     el("uc-value-added").replaceChildren(attrChip(uc.value_added_label, uc.value_added_points, options.value_added));
     attachSelectEdit(el("uc-value-added"), {

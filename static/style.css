@@ -454,6 +454,7 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
 .vote-breakdown { display: flex; flex-direction: column; gap: 2px; }
 .vote-row { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; }
 .vote-dept { font-weight: 600; min-width: 42px; color: var(--text-secondary); }
+.vote-summary { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--gridline); font-weight: 600; font-size: 0.875rem; }
 .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; cursor: pointer; }
 .checkbox-label input { margin: 0; accent-color: var(--series-1); }
 .detail-text p:last-child { margin-bottom: 0; }

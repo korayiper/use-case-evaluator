@@ -24,6 +24,10 @@ writer_users = ["a20779"]
 prioboard_users = [
     { user = "a20779", department = "DDIR" },
     { user = "a20779", department = "UDIR" },
+    { user = "a20779", department = "CDIR" },
+    { user = "a20779", department = "FDIR" },
+    { user = "a20779", department = "PDIR" },
+    { user = "a20779", department = "KDIR" },
 ]
 directors_users = ["a20779"]
 
