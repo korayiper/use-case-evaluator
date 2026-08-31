@@ -132,28 +132,35 @@ window.Common = (() => {
   }
 
   // Convention: blank-line-separated blocks -> <p>; a block becomes a <ul> of
-  // <li> only if every non-empty line in it starts with "-" or "*" (marker +
-  // following whitespace stripped); otherwise its lines join into one <p>.
-  // Pure DOM construction - only ever textContent, never innerHTML with
-  // user-supplied text.
+  // Within each blank-line-separated block, consecutive lines starting with
+  // "-"/"*" (marker + following whitespace stripped) become one <ul>; every
+  // other line becomes its own <p> - so a block mixing a plain intro line
+  // with bulleted lines still keeps each line on its own line, rather than
+  // the whole block collapsing into one space-joined paragraph the moment
+  // it isn't uniformly bulleted. Pure DOM construction - only ever
+  // textContent, never innerHTML with user-supplied text.
   function renderStructuredText(container, text) {
     container.innerHTML = "";
     if (!text) return;
     for (const block of text.trim().split(/\n\s*\n/)) {
       const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
-      if (!lines.length) continue;
-      if (lines.every((l) => /^[-*]\s+/.test(l))) {
-        const ul = document.createElement("ul");
-        for (const line of lines) {
-          const li = document.createElement("li");
-          li.textContent = line.replace(/^[-*]\s+/, "");
-          ul.appendChild(li);
+      let i = 0;
+      while (i < lines.length) {
+        if (/^[-*]\s+/.test(lines[i])) {
+          const ul = document.createElement("ul");
+          while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
+            const li = document.createElement("li");
+            li.textContent = lines[i].replace(/^[-*]\s+/, "");
+            ul.appendChild(li);
+            i++;
+          }
+          container.appendChild(ul);
+        } else {
+          const p = document.createElement("p");
+          p.textContent = lines[i];
+          container.appendChild(p);
+          i++;
         }
-        container.appendChild(ul);
-      } else {
-        const p = document.createElement("p");
-        p.textContent = lines.join(" ");
-        container.appendChild(p);
       }
     }
   }

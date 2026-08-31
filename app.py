@@ -12,7 +12,6 @@ from starlette.requests import Request
 import auth
 import db
 import scoring
-from config import settings
 
 app = FastAPI(root_path="/ai-use-case-portfolio", title="AI Use Case Evaluator")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -22,8 +21,6 @@ templates = Jinja2Templates(directory="templates")
 # browser fetches fresh CSS/JS after a deploy instead of serving a stale
 # cached copy of a same-named file (what just happened in manual testing).
 templates.env.globals["static_version"] = str(int(time.time()))
-
-db.init_db()
 
 
 def _str_enum(name: str, keys) -> type[Enum]:
@@ -51,7 +48,11 @@ class UseCaseCreate(BaseModel):
     development_time: DevelopmentTime
     process_criticality: ProcessCriticality
     process_dependency: ProcessDependency
-    economic_value: EconomicValue
+    # Never entered by the use case manager - set only via department votes
+    # (see PUT /api/use-cases/{id}/vote). Optional here purely so creation
+    # doesn't require it; db._enrich() treats a vote-less use case as
+    # unscored (0 points, "Ausstehend") regardless of what's stored here.
+    economic_value: EconomicValue | None = None
     golive_date: date
     depends_on: list[str] = Field(default_factory=list)
 
@@ -95,6 +96,7 @@ def api_me(request: Request):
         "user": user,
         "is_writer": auth.is_writer(user),
         "is_prioboard": auth.is_prioboard(user),
+        "departments": auth.departments_for(user),
         "is_director": auth.is_director(user),
     }
 
@@ -124,11 +126,20 @@ def api_get_use_case(use_case_id: str):
 def api_get_votes(use_case_id: str):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
-    return db.get_votes(use_case_id)
+    votes = db.get_votes(use_case_id)
+    voted_departments = {v["department"] for v in votes}
+    return {
+        "votes": votes,
+        "missing_departments": [d for d in auth.DEPARTMENTS if d not in voted_departments],
+    }
 
 
 class VoteCreate(BaseModel):
     value: EconomicValue
+    # Required, not inferred: a user may represent more than one department
+    # (auth.departments_for), so the client has to say which seat this vote
+    # is being cast for.
+    department: str
 
 
 # auth.require_prioboard is referenced twice below (once as the route gate,
@@ -138,13 +149,47 @@ class VoteCreate(BaseModel):
 def api_submit_vote(use_case_id: str, payload: VoteCreate, user: str = Depends(auth.require_prioboard)):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
-    db.upsert_vote(use_case_id, user, payload.value.value)
+    if payload.department not in auth.departments_for(user):
+        raise HTTPException(status_code=403, detail="Sie vertreten diese Abteilung nicht.")
+    db.upsert_vote(use_case_id, payload.department, user, payload.value.value)
     return {"status": "voted"}
 
 
 @app.get("/api/board")
 def api_board():
-    return db.board_candidates(settings.get("top_n", 10))
+    return {"stage": db.get_board_stage(), "use_cases": db.board_candidates()}
+
+
+class SessionCandidateUpdate(BaseModel):
+    candidate: bool
+
+
+@app.put("/api/use-cases/{use_case_id}/session-candidate", dependencies=[Depends(auth.require_writer)])
+def api_set_session_candidate(use_case_id: str, payload: SessionCandidateUpdate):
+    if not db.get_use_case(use_case_id):
+        raise HTTPException(status_code=404, detail="use case not found")
+    db.set_session_candidate(use_case_id, payload.candidate)
+    return {"status": "updated"}
+
+
+class StatusUpdate(BaseModel):
+    status: str
+
+
+# Any writer may set any status in any direction, including backward (e.g.
+# undoing "in Umsetzung", or un-prioritizing something) - matches the same
+# "trust the writer's judgment" stance already used for session-candidate
+# curation elsewhere. "priorisiert" is still normally reached only via
+# /api/board/finalize; this is the manual-correction escape hatch, not the
+# intended everyday path there.
+@app.put("/api/use-cases/{use_case_id}/status", dependencies=[Depends(auth.require_writer)])
+def api_set_status(use_case_id: str, payload: StatusUpdate):
+    if not db.get_use_case(use_case_id):
+        raise HTTPException(status_code=404, detail="use case not found")
+    if payload.status not in scoring.STATUS_LABELS:
+        raise HTTPException(status_code=400, detail="Ungültiger Status.")
+    db.set_status(use_case_id, payload.status)
+    return {"status": "updated"}
 
 
 class ReorderRequest(BaseModel):
@@ -158,6 +203,22 @@ def api_reorder_board(payload: ReorderRequest):
         raise HTTPException(status_code=400, detail=f"Unbekannte ID(en): {', '.join(sorted(unknown))}")
     db.set_manual_rank(payload.ordered_ids)
     return {"status": "reordered"}
+
+
+@app.put("/api/board/handoff", dependencies=[Depends(auth.require_prioboard)])
+def api_board_handoff():
+    if db.get_board_stage() != "prioboard":
+        raise HTTPException(status_code=400, detail="Die Priorisierung wurde bereits an den Vorstand übergeben.")
+    db.set_board_stage("board_of_management")
+    return {"status": "handed_off"}
+
+
+@app.put("/api/board/finalize", dependencies=[Depends(auth.require_director)])
+def api_board_finalize():
+    if db.get_board_stage() != "board_of_management":
+        raise HTTPException(status_code=400, detail="Das Prio-Board muss zuerst übergeben, bevor final entschieden werden kann.")
+    db.finalize_board()
+    return {"status": "finalized"}
 
 
 @app.post("/api/use-cases", status_code=201, dependencies=[Depends(auth.require_writer)])
@@ -174,7 +235,7 @@ def api_create_use_case(payload: UseCaseCreate):
         development_time=payload.development_time.value,
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
-        economic_value=payload.economic_value.value,
+        economic_value=payload.economic_value.value if payload.economic_value else None,
         golive_date=payload.golive_date.isoformat(),
         depends_on_ids=payload.depends_on,
     )
@@ -198,14 +259,14 @@ def api_update_use_case(use_case_id: str, payload: UseCaseCreate):
         development_time=payload.development_time.value,
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
-        economic_value=payload.economic_value.value,
+        economic_value=payload.economic_value.value if payload.economic_value else None,
         golive_date=payload.golive_date.isoformat(),
         depends_on_ids=payload.depends_on,
     )
     return {"status": "updated"}
 
 
-@app.delete("/api/use-cases/{use_case_id}")
+@app.delete("/api/use-cases/{use_case_id}", dependencies=[Depends(auth.require_writer)])
 def api_delete_use_case(use_case_id: str):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")

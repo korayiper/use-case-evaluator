@@ -19,6 +19,7 @@
       process_dependency: [],
       ai_feasibility: [],
       economic_value: [],
+      status: [],
     },
   };
 
@@ -33,6 +34,9 @@
     { id: "filter-process-criticality", key: "process_criticality", label: "Prozesskritikalität" },
     { id: "filter-process-dependency", key: "process_dependency", label: "Prozessabhängigkeit" },
     { id: "filter-ai-feasibility", key: "ai_feasibility", label: "KI-Umsetzbarkeit" },
+    // No help text - status is a self-explanatory lifecycle stage, not a
+    // scored attribute needing "Was bedeutet das?" decision support.
+    { id: "filter-status", key: "status", label: "Status", noHelp: true },
   ];
 
   const DEFAULT_DESC = new Set([
@@ -102,7 +106,7 @@
         render();
       },
       toggleLabel: () => filterToggleLabel(cfg),
-      help: { field: cfg.key },
+      help: cfg.noHelp ? undefined : { field: cfg.key },
     });
   }
 
@@ -300,6 +304,39 @@
         dependsTd.className = "muted-text";
       }
       tr.appendChild(dependsTd);
+
+      const statusTd = document.createElement("td");
+      const statusOpt = opts.status.find((o) => o.value === uc.status);
+      const statusChip = document.createElement("span");
+      statusChip.className = "chip status-chip";
+      statusChip.textContent = statusOpt ? statusOpt.label : uc.status;
+      statusTd.appendChild(statusChip);
+      tr.appendChild(statusTd);
+
+      const candidateTd = document.createElement("td");
+      if (state.isWriter) {
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = uc.is_session_candidate;
+        checkbox.title = "Für Priorisierung vormerken";
+        checkbox.addEventListener("change", async () => {
+          const wanted = checkbox.checked;
+          const res = await fetch(`${window.API_BASE}/use-cases/${uc.id}/session-candidate`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ candidate: wanted }),
+          });
+          if (!res.ok) {
+            checkbox.checked = !wanted;
+            alert("Konnte nicht gespeichert werden.");
+          }
+          await loadUseCases();
+        });
+        candidateTd.appendChild(checkbox);
+      } else {
+        candidateTd.textContent = uc.is_session_candidate ? "Ja" : "Nein";
+      }
+      tr.appendChild(candidateTd);
 
       tbody.appendChild(tr);
     }

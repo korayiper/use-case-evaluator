@@ -13,7 +13,6 @@ window.UseCaseForm = (() => {
     { id: "f-process-dependency", key: "process_dependency", withPoints: true },
     { id: "f-use-category", key: "use_category", withPoints: false },
     { id: "f-ai-feasibility", key: "ai_feasibility", withPoints: true },
-    { id: "f-economic-value", key: "economic_value", withPoints: true },
   ];
 
   const state = {
@@ -99,7 +98,6 @@ window.UseCaseForm = (() => {
         development_time: form.development_time.value,
         process_criticality: form.process_criticality.value,
         process_dependency: form.process_dependency.value,
-        economic_value: form.economic_value.value,
         golive_date: form.golive_date.value,
         depends_on: state.formDependsOn,
       };

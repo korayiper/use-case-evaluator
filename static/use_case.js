@@ -7,6 +7,10 @@
   let currentUseCase = null;
   let allUseCases = [];
   let isWriter = false;
+  let myDepartments = [];
+  let voteData = { votes: [], missing_departments: [] };
+
+  const STATUS_LABELS = { neu: "Neu", priorisiert: "Priorisiert", in_umsetzung: "In Umsetzung" };
 
   function useCaseIdFromPath() {
     return location.pathname.split("/").filter(Boolean).pop();
@@ -58,7 +62,6 @@
       development_time: uc.development_time,
       process_criticality: uc.process_criticality,
       process_dependency: uc.process_dependency,
-      economic_value: uc.economic_value,
       golive_date: uc.golive_date,
       depends_on: uc.depends_on,
       ...overrides,
@@ -83,6 +86,150 @@
     }
     await loadUseCase();
     return true;
+  }
+
+  async function saveStatus(status) {
+    const res = await fetch(`${window.API_BASE}/use-cases/${currentUseCase.id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.detail || "Der Status konnte nicht geändert werden.");
+      return false;
+    }
+    await loadUseCase();
+    return true;
+  }
+
+  // Any writer may move status in any direction, including backward (e.g.
+  // undoing "in Umsetzung") - matches the server-side rule in
+  // app.api_set_status. "priorisiert" is normally reached via the board's
+  // finalize action instead; this is the manual-correction path.
+  function attachStatusEdit(container, { value }) {
+    if (!isWriter) return;
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return;
+      let saving = false;
+      const select = document.createElement("select");
+      for (const [statusValue, label] of Object.entries(STATUS_LABELS)) {
+        const option = document.createElement("option");
+        option.value = statusValue;
+        option.textContent = label;
+        select.appendChild(option);
+      }
+      select.value = value;
+      container.replaceChildren(select);
+      select.focus();
+      select.addEventListener("change", async () => {
+        saving = true;
+        await saveStatus(select.value);
+      });
+      select.addEventListener("blur", () => {
+        if (!saving) render(currentUseCase);
+      });
+    };
+  }
+
+  async function saveVote(department, value) {
+    const res = await fetch(`${window.API_BASE}/use-cases/${currentUseCase.id}/vote`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ department, value }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const message = body.detail
+        ? typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail)
+        : "Die Stimme konnte nicht gespeichert werden.";
+      alert(message);
+      return false;
+    }
+    await loadUseCase();
+    return true;
+  }
+
+  // Click-to-edit for a vote row the logged-in user is allowed to cast (any
+  // department in myDepartments - a user can represent more than one) - not
+  // gated on isWriter like every other field here, since voting is a
+  // prioboard action, independent of write access to the use case itself.
+  function attachVoteEdit(container, { department, value }) {
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return;
+      let saving = false;
+      const select = document.createElement("select");
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Stimme abgeben…";
+      select.appendChild(placeholder);
+      for (const opt of options.economic_value) {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = `${opt.label} (${opt.points}p)`;
+        select.appendChild(option);
+      }
+      select.value = value || "";
+      container.replaceChildren(select);
+      select.focus();
+      select.addEventListener("change", async () => {
+        saving = true;
+        await saveVote(department, select.value);
+      });
+      select.addEventListener("blur", () => {
+        if (!saving) render(currentUseCase);
+      });
+    };
+  }
+
+  function renderVoteBreakdown(container, uc) {
+    const votesByDept = {};
+    for (const v of voteData.votes) votesByDept[v.department] = v;
+    const allDepts = [...voteData.votes.map((v) => v.department), ...voteData.missing_departments].sort();
+
+    container.className = "vote-breakdown";
+    container.replaceChildren();
+    for (const dept of allDepts) {
+      const row = document.createElement("div");
+      row.className = "vote-row";
+      const label = document.createElement("span");
+      label.className = "vote-dept";
+      label.textContent = dept;
+      const valueEl = document.createElement("span");
+      const vote = votesByDept[dept];
+      if (vote) {
+        const opt = options.economic_value.find((o) => o.value === vote.value);
+        valueEl.textContent = opt ? `${opt.label} (${opt.points}p)` : vote.value;
+      } else {
+        valueEl.textContent = "Ausstehend";
+        valueEl.className = "muted-text";
+      }
+      row.append(label, valueEl);
+      container.appendChild(row);
+      if (myDepartments.includes(dept)) {
+        attachVoteEdit(valueEl, { department: dept, value: vote ? vote.value : "" });
+      }
+    }
+
+    // Provisional the moment a single vote exists (matches the rest of the
+    // app's "show the real, partial number rather than hiding it" stance) -
+    // this is the same value that's already feeding the priority score.
+    const summary = document.createElement("div");
+    summary.className = "vote-summary";
+    if (uc.vote_count > 0) {
+      const prefix = uc.vote_count < 6 ? "Median (vorläufig)" : "Median";
+      summary.textContent = `${prefix}: ${uc.economic_value_label} (${uc.economic_value_points}p)`;
+    } else {
+      summary.className += " muted-text";
+      summary.textContent = "Median: Ausstehend";
+    }
+    container.appendChild(summary);
   }
 
   // Click-to-edit for a single-select field: swaps the display chip for a
@@ -279,21 +426,7 @@
       withPoints: false,
     });
 
-    el("uc-economic-value").replaceChildren(
-      attrChip(uc.economic_value_label, uc.economic_value_points, options.economic_value)
-    );
-    // Once the prio board has voted, economic_value is server-computed from
-    // the vote median (see db._enrich()) - editing it here would have no
-    // effect on the next read, so it stays read-only, same rule as the full
-    // form (use_case_form.js).
-    if (uc.vote_count === 0) {
-      attachSelectEdit(el("uc-economic-value"), {
-        fieldKey: "economic_value",
-        value: uc.economic_value,
-        fieldOptions: options.economic_value,
-        withPoints: true,
-      });
-    }
+    renderVoteBreakdown(el("uc-economic-value"), uc);
 
     el("uc-value-added").replaceChildren(attrChip(uc.value_added_label, uc.value_added_points, options.value_added));
     attachSelectEdit(el("uc-value-added"), {
@@ -386,18 +519,69 @@
     renderLinkList(el("uc-depends-on"), uc.depends_on, uc.depends_on_names);
     attachDependsOnEdit(el("uc-depends-on"), el("uc-depends-on-edit"), { currentIds: uc.depends_on });
     renderLinkList(el("uc-dependents"), uc.dependent_ids, uc.dependent_names);
+
+    const statusEl = el("uc-status");
+    statusEl.replaceChildren();
+    const statusChip = document.createElement("span");
+    statusChip.className = "chip status-chip";
+    statusChip.textContent = STATUS_LABELS[uc.status] || uc.status;
+    statusEl.appendChild(statusChip);
+    if (uc.prioritized_round) {
+      const roundInfo = document.createElement("p");
+      roundInfo.className = "muted-text";
+      roundInfo.textContent = `Priorisiert: ${uc.prioritized_round} (${formatDate(uc.prioritized_at.slice(0, 10))})`;
+      statusEl.appendChild(roundInfo);
+    }
+    attachStatusEdit(statusEl, { value: uc.status });
+
+    const candidateEl = el("uc-session-candidate");
+    candidateEl.replaceChildren();
+    if (isWriter) {
+      const label = document.createElement("label");
+      label.className = "checkbox-label";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = uc.is_session_candidate;
+      checkbox.addEventListener("change", async () => {
+        const wanted = checkbox.checked;
+        const res = await fetch(`${window.API_BASE}/use-cases/${uc.id}/session-candidate`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidate: wanted }),
+        });
+        if (!res.ok) {
+          alert("Konnte nicht gespeichert werden.");
+          checkbox.checked = !wanted;
+          return;
+        }
+        await loadUseCase();
+      });
+      label.append(checkbox, document.createTextNode(" Für Priorisierung vormerken"));
+      candidateEl.appendChild(label);
+      if (uc.vote_count < 6) {
+        const warn = document.createElement("p");
+        warn.className = "muted-text";
+        warn.textContent = `Achtung: nicht vollständig bewertet (${uc.vote_count}/6 Stimmen)`;
+        candidateEl.appendChild(warn);
+      }
+    } else {
+      candidateEl.textContent = uc.is_session_candidate ? "Ja" : "Nein";
+    }
   }
 
   async function loadUseCase() {
     const id = useCaseIdFromPath();
-    const [me, uc, useCases] = await Promise.all([
+    const [me, uc, useCases, votes] = await Promise.all([
       fetch(`${window.API_BASE}/me`).then((r) => r.json()),
       fetch(`${window.API_BASE}/use-cases/${id}`).then((r) => r.json()),
       fetch(`${window.API_BASE}/use-cases`).then((r) => r.json()),
+      fetch(`${window.API_BASE}/use-cases/${id}/votes`).then((r) => r.json()),
     ]);
     currentUseCase = uc;
     allUseCases = useCases;
     isWriter = me.is_writer;
+    myDepartments = me.departments;
+    voteData = votes;
     render(uc);
     el("uc-delete-link").hidden = !me.is_writer;
   }

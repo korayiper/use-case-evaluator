@@ -202,6 +202,15 @@ ECONOMIC_VALUE_LABELS = {
     "low": "Tief",
     "very_low": "Sehr tief",
 }
+
+# Lifecycle status (use_cases.status) - not a scored attribute (no points),
+# just forward-only stages: neu -> priorisiert (set by finalizing a
+# prioritization round) -> in_umsetzung (set by "Umsetzung starten").
+STATUS_LABELS = {
+    "neu": "Neu",
+    "priorisiert": "Priorisiert",
+    "in_umsetzung": "In Umsetzung",
+}
 ECONOMIC_VALUE_DESCRIPTION = (
     'Der "Wirtschaftliche Nutzen" ist als Gesamtausprägung aus strategischer Relevanz/'
     "Dringlichkeit, qualitativem Erfordernis, erwartetem Kundennutzen, Wettbewerbsdruck, "
@@ -305,7 +314,9 @@ def labels_for(
         "process_dependency_label": PROCESS_DEPENDENCY_LABELS[process_dependency],
         "use_category_label": USE_CATEGORY[use_category],
         "ai_feasibility_label": AI_FEASIBILITY_LABELS[ai_feasibility],
-        "economic_value_label": ECONOMIC_VALUE_LABELS[economic_value],
+        # None before the first department vote (see db._enrich()) - not yet
+        # a real ECONOMIC_VALUE class, so it isn't in the label table.
+        "economic_value_label": ECONOMIC_VALUE_LABELS[economic_value] if economic_value else "Ausstehend",
     }
 
 
@@ -349,6 +360,7 @@ def options_payload() -> dict:
         "use_category": [
             {"value": k, "label": v, "help": USE_CATEGORY_HELP.get(k)} for k, v in USE_CATEGORY.items()
         ],
+        "status": [{"value": k, "label": v} for k, v in STATUS_LABELS.items()],
         "ai_feasibility": [
             {
                 "value": k,
