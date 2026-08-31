@@ -92,7 +92,10 @@ def upgrade() -> None:
     # --- board_state: single-row stage tracker for the twice-yearly handoff ---
     op.create_table(
         "board_state",
-        sa.Column("id", sa.Integer(), primary_key=True),
+        # autoincrement=False: id is always 1, never generated - without
+        # this, mssql infers IDENTITY for a lone integer PK and rejects the
+        # seed row's explicit id=1 ("IDENTITY_INSERT is set to OFF").
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=False),
         sa.Column("stage", sa.String(length=30), nullable=False),
     )
     op.bulk_insert(

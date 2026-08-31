@@ -100,6 +100,9 @@ economic_value_votes = Table(
 board_state = Table(
     "board_state",
     metadata,
-    Column("id", Integer, primary_key=True),
+    # autoincrement=False: id is always 1, never generated - without this,
+    # mssql infers IDENTITY for a lone integer PK and then rejects the
+    # seed row's explicit id=1 ("IDENTITY_INSERT is set to OFF").
+    Column("id", Integer, primary_key=True, autoincrement=False),
     Column("stage", String(30), nullable=False),
 )
