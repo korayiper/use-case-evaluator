@@ -11,7 +11,12 @@ an AD group lookup) without touching anything that calls it.
 
 from fastapi import HTTPException, Request
 
+import db
 from config import settings
+
+# The six departments represented on the prio board - fixed, not
+# configurable, since the business rule is literally "these six vote."
+DEPARTMENTS = ["DDIR", "FDIR", "PDIR", "UDIR", "CDIR", "KDIR"]
 
 
 def get_current_user(request: Request) -> str:
@@ -41,7 +46,14 @@ def require_writer(request: Request) -> str:
 
 
 def is_prioboard(user: str) -> bool:
-    return user in settings.get("prioboard_users", [])
+    return department_for(user) is not None
+
+
+def department_for(user: str) -> str | None:
+    for entry in settings.get("prioboard_users", []):
+        if entry["user"] == user:
+            return entry["department"]
+    return None
 
 
 def is_director(user: str) -> bool:
@@ -55,11 +67,29 @@ def require_prioboard(request: Request) -> str:
     return user
 
 
-def require_board_reorder(request: Request) -> str:
-    """Prio-board members AND directors may drag-reorder the board - the
-    directors have the final say per business rule, but nothing here
-    distinguishes them once past this gate."""
+def require_director(request: Request) -> str:
     user = get_current_user(request)
-    if not (is_prioboard(user) or is_director(user)):
-        raise HTTPException(status_code=403, detail="Keine Berechtigung zum Neuordnen des Boards.")
+    if not is_director(user):
+        raise HTTPException(status_code=403, detail="Nur der Vorstand darf diese Aktion ausführen.")
+    return user
+
+
+def require_board_reorder(request: Request) -> str:
+    """Twice-yearly handoff: the board has two stages (db.get_board_stage()),
+    and only one side may drag-reorder at a time - the prio board proposes
+    first, then the board of management gets the final say once handed off.
+    """
+    user = get_current_user(request)
+    stage = db.get_board_stage()
+    if stage == "board_of_management":
+        if not is_director(user):
+            raise HTTPException(
+                status_code=403,
+                detail="Die Priorisierung wurde an den Vorstand übergeben - nur der Vorstand darf jetzt neu ordnen.",
+            )
+    elif not is_prioboard(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Das Prio-Board muss zuerst eine Reihenfolge vorschlagen, bevor der Vorstand übernehmen kann.",
+        )
     return user

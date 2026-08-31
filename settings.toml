@@ -15,13 +15,17 @@ sqlite_path = "usecases.db"
 remote_user_header = "X-Remote-User"
 writer_users = ["a20779"]
 
-# Phase 1 (same pattern as writer_users): who can vote on a use case's
-# economic value, and who can drag-reorder the prioritization board once
-# short-listed. Edit these lists to add/remove members.
-prioboard_users = ["a20779", "a20778"]
+# Phase 1 (same pattern as writer_users): who's on the prio board, and which
+# of the six departments (auth.DEPARTMENTS) each one represents - each
+# department gets exactly one vote per use case, cast by whoever from that
+# department is listed here. Multiple users may share a department (any of
+# them can cast that department's vote). directors_users may drag-reorder
+# the board once the prio board has handed it off - see auth.py.
+prioboard_users = [
+    { user = "a20779", department = "DDIR" },
+    { user = "a20778", department = "FDIR" },
+]
 directors_users = []
-# How many top-priority use cases move onto the prioritization board.
-top_n = 10
 
 [development]
 db_backend = "sqlite"

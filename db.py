@@ -8,7 +8,7 @@ from sqlalchemy.engine import URL
 
 import scoring
 from config import settings
-from models import economic_value_votes, use_case_dependencies, use_cases
+from models import board_state, economic_value_votes, use_case_dependencies, use_cases
 
 # "sqlite" (default, used in dev) or "mssql" (prod) - see settings.toml /
 # .secrets.toml.example. Everything below is written against SQLAlchemy Core
@@ -243,17 +243,19 @@ def _enrich(
 ) -> dict:
     d = dict(row)
     vote_values = vote_values or []
-    # Once a use case has board votes, their median silently supersedes the
-    # manually-entered economic_value for every downstream consumer (the
-    # priority sum, the economic_value filter, chip colors, labels) - not
-    # just an extra parallel field. Otherwise those would keep showing the
-    # stale pre-vote value for anything already on the prio board.
+    # economic_value is never entered directly (see use_cases.economic_value
+    # in models.py) - it's purely the median of department votes. Before the
+    # first vote, it's genuinely unscored: 0 points (a real, visible,
+    # sortable provisional score, not hidden) and "Ausstehend" for display,
+    # regardless of any leftover value from before this field stopped being
+    # writer-editable.
     if vote_values:
         median = scoring.economic_value_median(vote_values)
         d["economic_value"] = scoring.economic_value_nearest_label(median)
         economic_value_points = median
     else:
-        economic_value_points = scoring.ECONOMIC_VALUE[d["economic_value"]]
+        d["economic_value"] = None
+        economic_value_points = 0
     months = scoring.development_months(d["development_time"])
     golive = date.fromisoformat(d["golive_date"])
     backlog = scoring.is_backlog(d["value_added"], d["ai_feasibility"])
@@ -320,8 +322,10 @@ def list_use_cases() -> list[dict]:
 
 # Upsert syntax genuinely isn't portable across sqlite/mssql - this is the
 # one deliberate backend-specific exception to the shared-query convention
-# documented at the top of this file.
-def upsert_vote(use_case_id: str, voter: str, value: str) -> None:
+# documented at the top of this file. Keyed on (use_case_id, department), not
+# voter - a second person from the same department overwrites that
+# department's one vote rather than creating a second one.
+def upsert_vote(use_case_id: str, department: str, voter: str, value: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
     with ENGINE.begin() as conn:
         if DB_BACKEND == "mssql":
@@ -329,22 +333,31 @@ def upsert_vote(use_case_id: str, voter: str, value: str) -> None:
                 text(
                     """
                     MERGE dbo.economic_value_votes AS target
-                    USING (SELECT :use_case_id AS use_case_id, :voter AS voter, :value AS value) AS src
-                    ON target.use_case_id = src.use_case_id AND target.voter = src.voter
-                    WHEN MATCHED THEN UPDATE SET value = src.value, updated_at = :updated_at
-                    WHEN NOT MATCHED THEN INSERT (use_case_id, voter, value, updated_at)
-                        VALUES (src.use_case_id, src.voter, src.value, :updated_at);
+                    USING (
+                        SELECT :use_case_id AS use_case_id, :department AS department, :voter AS voter,
+                               :value AS value
+                    ) AS src
+                    ON target.use_case_id = src.use_case_id AND target.department = src.department
+                    WHEN MATCHED THEN UPDATE SET voter = src.voter, value = src.value, updated_at = :updated_at
+                    WHEN NOT MATCHED THEN INSERT (use_case_id, department, voter, value, updated_at)
+                        VALUES (src.use_case_id, src.department, src.voter, src.value, :updated_at);
                     """
                 ),
-                {"use_case_id": use_case_id, "voter": voter, "value": value, "updated_at": now},
+                {
+                    "use_case_id": use_case_id,
+                    "department": department,
+                    "voter": voter,
+                    "value": value,
+                    "updated_at": now,
+                },
             )
         else:
             stmt = sqlite_insert(economic_value_votes).values(
-                use_case_id=use_case_id, voter=voter, value=value, updated_at=now
+                use_case_id=use_case_id, department=department, voter=voter, value=value, updated_at=now
             )
             stmt = stmt.on_conflict_do_update(
-                index_elements=[economic_value_votes.c.use_case_id, economic_value_votes.c.voter],
-                set_={"value": stmt.excluded.value, "updated_at": stmt.excluded.updated_at},
+                index_elements=[economic_value_votes.c.use_case_id, economic_value_votes.c.department],
+                set_={"voter": stmt.excluded.voter, "value": stmt.excluded.value, "updated_at": stmt.excluded.updated_at},
             )
             conn.execute(stmt)
 
@@ -353,28 +366,15 @@ def get_votes(use_case_id: str) -> list[dict]:
     with ENGINE.connect() as conn:
         return _all(
             conn,
-            select(economic_value_votes.c.voter, economic_value_votes.c.value, economic_value_votes.c.updated_at)
-            .where(economic_value_votes.c.use_case_id == use_case_id)
-            .order_by(economic_value_votes.c.voter),
-        )
-
-
-def _votes_for_ids(ids: list[str]) -> dict[str, list[dict]]:
-    """use_case_id -> [{voter, value}, ...] for a set of ids - used by
-    board_candidates() to show each board member their own current vote."""
-    if not ids:
-        return {}
-    with ENGINE.connect() as conn:
-        rows = _all(
-            conn,
             select(
-                economic_value_votes.c.use_case_id, economic_value_votes.c.voter, economic_value_votes.c.value
-            ).where(economic_value_votes.c.use_case_id.in_(ids)),
+                economic_value_votes.c.department,
+                economic_value_votes.c.voter,
+                economic_value_votes.c.value,
+                economic_value_votes.c.updated_at,
+            )
+            .where(economic_value_votes.c.use_case_id == use_case_id)
+            .order_by(economic_value_votes.c.department),
         )
-    out: dict[str, list[dict]] = {}
-    for r in rows:
-        out.setdefault(r["use_case_id"], []).append({"voter": r["voter"], "value": r["value"]})
-    return out
 
 
 def set_manual_rank(ordered_ids: list[str]) -> None:
@@ -385,17 +385,61 @@ def set_manual_rank(ordered_ids: list[str]) -> None:
             conn.execute(update(use_cases).where(use_cases.c.id == use_case_id).values(manual_rank=i))
 
 
-def board_candidates(top_n: int) -> list[dict]:
-    """Board contents: everyone already manually ranked (sticky - never
-    dropped just because computed priority later shifts) unioned with
-    however many more are needed to reach top_n, chosen by highest computed
-    priority among the rest. Order: manual_rank ascending first, newcomers
-    by priority descending appended after."""
-    all_cases = list_use_cases()
+def set_session_candidate(use_case_id: str, candidate: bool) -> None:
+    """Writer-curated flag: is this use case in scope for the upcoming
+    twice-yearly prioritization session? This - not an automatic score
+    cutoff - is what determines board_candidates()'s contents."""
+    with ENGINE.begin() as conn:
+        conn.execute(update(use_cases).where(use_cases.c.id == use_case_id).values(is_session_candidate=candidate))
+
+
+def set_status(use_case_id: str, status: str) -> None:
+    with ENGINE.begin() as conn:
+        conn.execute(update(use_cases).where(use_cases.c.id == use_case_id).values(status=status))
+
+
+def board_candidates() -> list[dict]:
+    """Board contents: exactly the use cases the writer has curated as
+    session candidates (use_cases.is_session_candidate) - not an automatic
+    top-N cutoff. Order: manual_rank ascending first (sticky - never dropped
+    just because computed priority later shifts), un-ranked candidates by
+    priority descending appended after."""
+    all_cases = [uc for uc in list_use_cases() if uc["is_session_candidate"]]
     ranked = sorted((uc for uc in all_cases if uc["manual_rank"] is not None), key=lambda uc: uc["manual_rank"])
     unranked = sorted((uc for uc in all_cases if uc["manual_rank"] is None), key=lambda uc: uc["priority"], reverse=True)
-    board = ranked + unranked[: max(0, top_n - len(ranked))]
-    detail = _votes_for_ids([uc["id"] for uc in board])
-    for uc in board:
-        uc["votes"] = detail.get(uc["id"], [])
-    return board
+    return ranked + unranked
+
+
+def get_board_stage() -> str:
+    with ENGINE.connect() as conn:
+        row = _one(conn, select(board_state.c.stage).where(board_state.c.id == 1))
+    return row["stage"]
+
+
+def set_board_stage(stage: str) -> None:
+    with ENGINE.begin() as conn:
+        conn.execute(update(board_state).where(board_state.c.id == 1).values(stage=stage))
+
+
+def finalize_board() -> None:
+    """Director action closing out a prioritization session: every current
+    candidate is stamped 'priorisiert' (unless already further along, i.e.
+    'in_umsetzung' - never downgrade), then the candidate/rank state is
+    cleared so the next twice-yearly cycle starts from an empty, freshly
+    curated slate. One transaction."""
+    with ENGINE.begin() as conn:
+        candidate_ids = [
+            r["id"] for r in _all(conn, select(use_cases.c.id).where(use_cases.c.is_session_candidate.is_(True)))
+        ]
+        if candidate_ids:
+            conn.execute(
+                update(use_cases)
+                .where(use_cases.c.id.in_(candidate_ids), use_cases.c.status != "in_umsetzung")
+                .values(status="priorisiert")
+            )
+            conn.execute(
+                update(use_cases)
+                .where(use_cases.c.id.in_(candidate_ids))
+                .values(is_session_candidate=False, manual_rank=None)
+            )
+        conn.execute(update(board_state).where(board_state.c.id == 1).values(stage="prioboard"))

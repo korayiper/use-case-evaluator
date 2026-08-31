@@ -3,9 +3,12 @@
 
   const { el, textColorFor, statusColorForPoints, categoryColor } = Common;
 
+  const STAGE_LABELS = { prioboard: "Phase: Prio-Board", board_of_management: "Phase: Vorstand" };
+
   const state = {
     options: null,
     board: [],
+    stage: "prioboard",
     currentUser: null,
     isPrioboard: false,
     isDirector: false,
@@ -19,8 +22,6 @@
     state.currentUser = data.user;
     state.isPrioboard = data.is_prioboard;
     state.isDirector = data.is_director;
-    state.canReorder = state.isPrioboard || state.isDirector;
-    el("board-hint").hidden = !state.canReorder;
   }
 
   async function loadOptions() {
@@ -28,24 +29,18 @@
     state.options = await res.json();
   }
 
+  // Voting happens on the use-case detail page now (every use case, not
+  // just today's board contents) - this page is purely about ranking the
+  // writer-curated session candidates.
   async function loadBoard() {
     const res = await fetch(`${window.API_BASE}/board`);
-    state.board = await res.json();
+    const data = await res.json();
+    state.stage = data.stage;
+    state.board = data.use_cases;
+    state.canReorder =
+      (state.stage === "prioboard" && state.isPrioboard) ||
+      (state.stage === "board_of_management" && state.isDirector);
     render();
-  }
-
-  function myVoteValue(uc) {
-    const mine = uc.votes.find((v) => v.voter === state.currentUser);
-    return mine ? mine.value : "";
-  }
-
-  async function submitVote(useCaseId, value) {
-    await fetch(`${window.API_BASE}/use-cases/${useCaseId}/vote`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
-    });
-    await loadBoard();
   }
 
   async function persistOrder() {
@@ -56,7 +51,41 @@
     });
   }
 
+  async function reportError(res, fallback) {
+    const body = await res.json().catch(() => ({}));
+    alert(body.detail || fallback);
+  }
+
+  async function handoff() {
+    const res = await fetch(`${window.API_BASE}/board/handoff`, { method: "PUT" });
+    if (!res.ok) {
+      await reportError(res, "Konnte nicht an den Vorstand übergeben werden.");
+      return;
+    }
+    await loadBoard();
+  }
+
+  async function finalize() {
+    if (!confirm("Priorisierung jetzt abschliessen? Alle aktuellen Kandidaten werden als priorisiert markiert.")) {
+      return;
+    }
+    const res = await fetch(`${window.API_BASE}/board/finalize`, { method: "PUT" });
+    if (!res.ok) {
+      await reportError(res, "Konnte die Priorisierung nicht abschliessen.");
+      return;
+    }
+    await loadBoard();
+  }
+
+  function renderStageBar() {
+    el("board-stage-chip").textContent = STAGE_LABELS[state.stage] || state.stage;
+    el("board-handoff-btn").hidden = !(state.stage === "prioboard" && state.isPrioboard);
+    el("board-finalize-btn").hidden = !(state.stage === "board_of_management" && state.isDirector);
+    el("board-hint").hidden = !state.canReorder;
+  }
+
   function render() {
+    renderStageBar();
     const list = el("board-list");
     list.innerHTML = "";
     el("board-summary").textContent = `${state.board.length} Anwendungsfälle`;
@@ -107,23 +136,6 @@
       evChip.textContent = `${uc.economic_value_label} (${uc.vote_count} Stimme${uc.vote_count === 1 ? "" : "n"})`;
       li.appendChild(evChip);
 
-      if (state.isPrioboard) {
-        const select = document.createElement("select");
-        const placeholder = document.createElement("option");
-        placeholder.value = "";
-        placeholder.textContent = "Ihre Stimme…";
-        select.appendChild(placeholder);
-        for (const opt of state.options.economic_value) {
-          const option = document.createElement("option");
-          option.value = opt.value;
-          option.textContent = `${opt.label} (${opt.points}p)`;
-          select.appendChild(option);
-        }
-        select.value = myVoteValue(uc);
-        select.addEventListener("change", () => submitVote(uc.id, select.value));
-        li.appendChild(select);
-      }
-
       if (state.canReorder) {
         li.addEventListener("dragstart", () => {
           state.dragIndex = index;
@@ -147,6 +159,8 @@
   (async function init() {
     await loadCurrentUser();
     await loadOptions();
+    el("board-handoff-btn").addEventListener("click", handoff);
+    el("board-finalize-btn").addEventListener("click", finalize);
     await loadBoard();
   })();
 })();

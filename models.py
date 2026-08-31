@@ -11,7 +11,7 @@ lists in db.py - one definition, not two kept in sync by hand.
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, MetaData, String, Table, Text
 
 metadata = MetaData()
 
@@ -33,9 +33,20 @@ use_cases = Table(
     Column("development_time", String(50), nullable=False),
     Column("process_criticality", String(50), nullable=False),
     Column("process_dependency", String(50), nullable=False),
-    Column("economic_value", String(50), nullable=False),
+    # Nullable: set only via department votes (see economic_value_votes) once
+    # the use case manager is done evaluating everything else - never entered
+    # directly, and never required at creation.
+    Column("economic_value", String(50)),
     Column("golive_date", String(10), nullable=False),
     Column("manual_rank", Integer),
+    # neu -> priorisiert (set only by finalizing a prioritization round) ->
+    # in_umsetzung (set only by the "Umsetzung starten" action). Forward-only.
+    Column("status", String(20), nullable=False, default="neu"),
+    # Curated by the use case manager: is this use case in scope for the
+    # upcoming twice-yearly prioritization session? Replaces the old
+    # automatic top-N cutoff - board_candidates() is now just "where this is
+    # true", ordered by manual_rank.
+    Column("is_session_candidate", Boolean, nullable=False, default=False),
     Column(
         "created_at",
         String(32),
@@ -57,12 +68,30 @@ use_case_dependencies = Table(
     Column("depends_on_id", String(36), ForeignKey("use_cases.id"), primary_key=True),
 )
 
+
+# Keyed by department, not by voter: each of the six departments
+# (auth.DEPARTMENTS) gets exactly one vote per use case, cast by whoever from
+# that department happens to click. voter is kept as a plain audit column
+# (who actually cast that department's vote), not part of the key - a second
+# person from the same department overwrites, never creates a second vote.
 economic_value_votes = Table(
     "economic_value_votes",
     metadata,
     Column("use_case_id", String(36), ForeignKey("use_cases.id"), primary_key=True),
-    Column("voter", String(200), primary_key=True),
+    Column("department", String(10), primary_key=True),
+    Column("voter", String(200), nullable=False),
     Column("value", String(50), nullable=False),
     # Set explicitly by db.upsert_vote() on every write, not a column default.
     Column("updated_at", String(32), nullable=False),
+)
+
+# Single-row table (id is always 1) tracking which side of the twice-yearly
+# handoff currently owns drag-reordering: "prioboard" or
+# "board_of_management". See auth.require_board_reorder and
+# db.finalize_board().
+board_state = Table(
+    "board_state",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("stage", String(30), nullable=False),
 )

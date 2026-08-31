@@ -40,6 +40,22 @@ def run_migrations_online() -> None:
     """Run migrations in 'online' mode, against db.ENGINE - the same engine
     the app itself uses."""
     with db.ENGINE.connect() as connection:
+        if db.DB_BACKEND != "mssql":
+            # batch_alter_table on sqlite recreates the whole table (copy,
+            # drop, rename) to fake an ALTER COLUMN - with real rows already
+            # in child tables (economic_value_votes, use_case_dependencies)
+            # referencing use_cases, foreign_keys=ON (set by db.py's own
+            # connect event, which also fires for this connection) blocks
+            # the transient DROP TABLE mid-swap. Migrations don't need that
+            # protection: the app's long-running engine re-enables it for
+            # every request via the same event listener regardless.
+            #
+            # Issued on the raw DBAPI connection, not via connection.execute()
+            # - sqlite treats "PRAGMA foreign_keys" as a silent no-op once a
+            # transaction is open, and SQLAlchemy's Connection auto-begins one
+            # on first execute, so going through Core here would appear to
+            # succeed while quietly not taking effect.
+            connection.connection.dbapi_connection.execute("PRAGMA foreign_keys=OFF")
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
