@@ -46,14 +46,13 @@ def require_writer(request: Request) -> str:
 
 
 def is_prioboard(user: str) -> bool:
-    return department_for(user) is not None
+    return bool(departments_for(user))
 
 
-def department_for(user: str) -> str | None:
-    for entry in settings.get("prioboard_users", []):
-        if entry["user"] == user:
-            return entry["department"]
-    return None
+# A user can represent more than one department (e.g. a small team covering
+# two seats) - every matching entry counts, not just the first.
+def departments_for(user: str) -> list[str]:
+    return [entry["department"] for entry in settings.get("prioboard_users", []) if entry["user"] == user]
 
 
 def is_director(user: str) -> bool:

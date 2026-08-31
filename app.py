@@ -96,7 +96,7 @@ def api_me(request: Request):
         "user": user,
         "is_writer": auth.is_writer(user),
         "is_prioboard": auth.is_prioboard(user),
-        "department": auth.department_for(user),
+        "departments": auth.departments_for(user),
         "is_director": auth.is_director(user),
     }
 
@@ -136,6 +136,10 @@ def api_get_votes(use_case_id: str):
 
 class VoteCreate(BaseModel):
     value: EconomicValue
+    # Required, not inferred: a user may represent more than one department
+    # (auth.departments_for), so the client has to say which seat this vote
+    # is being cast for.
+    department: str
 
 
 # auth.require_prioboard is referenced twice below (once as the route gate,
@@ -145,8 +149,9 @@ class VoteCreate(BaseModel):
 def api_submit_vote(use_case_id: str, payload: VoteCreate, user: str = Depends(auth.require_prioboard)):
     if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
-    department = auth.department_for(user)
-    db.upsert_vote(use_case_id, department, user, payload.value.value)
+    if payload.department not in auth.departments_for(user):
+        raise HTTPException(status_code=403, detail="Sie vertreten diese Abteilung nicht.")
+    db.upsert_vote(use_case_id, payload.department, user, payload.value.value)
     return {"status": "voted"}
 
 
@@ -171,16 +176,18 @@ class StatusUpdate(BaseModel):
     status: str
 
 
-# The only forward transition exposed today - "Umsetzung starten", moving a
-# prioritized use case into development. Anything else (becoming
-# "priorisiert" in the first place) only happens via /api/board/finalize.
+# Any writer may set any status in any direction, including backward (e.g.
+# undoing "in Umsetzung", or un-prioritizing something) - matches the same
+# "trust the writer's judgment" stance already used for session-candidate
+# curation elsewhere. "priorisiert" is still normally reached only via
+# /api/board/finalize; this is the manual-correction escape hatch, not the
+# intended everyday path there.
 @app.put("/api/use-cases/{use_case_id}/status", dependencies=[Depends(auth.require_writer)])
 def api_set_status(use_case_id: str, payload: StatusUpdate):
-    uc = db.get_use_case(use_case_id)
-    if not uc:
+    if not db.get_use_case(use_case_id):
         raise HTTPException(status_code=404, detail="use case not found")
-    if payload.status != "in_umsetzung" or uc["status"] != "priorisiert":
-        raise HTTPException(status_code=400, detail="Ungültiger Statuswechsel.")
+    if payload.status not in scoring.STATUS_LABELS:
+        raise HTTPException(status_code=400, detail="Ungültiger Status.")
     db.set_status(use_case_id, payload.status)
     return {"status": "updated"}
 

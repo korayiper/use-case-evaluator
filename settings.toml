@@ -23,9 +23,9 @@ writer_users = ["a20779"]
 # the board once the prio board has handed it off - see auth.py.
 prioboard_users = [
     { user = "a20779", department = "DDIR" },
-    { user = "a20778", department = "FDIR" },
+    { user = "a20779", department = "UDIR" },
 ]
-directors_users = []
+directors_users = ["a20779"]
 
 [development]
 db_backend = "sqlite"

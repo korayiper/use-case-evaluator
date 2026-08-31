@@ -7,7 +7,7 @@
   let currentUseCase = null;
   let allUseCases = [];
   let isWriter = false;
-  let myDepartment = null;
+  let myDepartments = [];
   let voteData = { votes: [], missing_departments: [] };
 
   const STATUS_LABELS = { neu: "Neu", priorisiert: "Priorisiert", in_umsetzung: "In Umsetzung" };
@@ -88,11 +88,57 @@
     return true;
   }
 
-  async function saveVote(value) {
+  async function saveStatus(status) {
+    const res = await fetch(`${window.API_BASE}/use-cases/${currentUseCase.id}/status`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.detail || "Der Status konnte nicht geändert werden.");
+      return false;
+    }
+    await loadUseCase();
+    return true;
+  }
+
+  // Any writer may move status in any direction, including backward (e.g.
+  // undoing "in Umsetzung") - matches the server-side rule in
+  // app.api_set_status. "priorisiert" is normally reached via the board's
+  // finalize action instead; this is the manual-correction path.
+  function attachStatusEdit(container, { value }) {
+    if (!isWriter) return;
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Bearbeiten";
+    container.onclick = (e) => {
+      if (e.target.closest("select, textarea, input, button")) return;
+      let saving = false;
+      const select = document.createElement("select");
+      for (const [statusValue, label] of Object.entries(STATUS_LABELS)) {
+        const option = document.createElement("option");
+        option.value = statusValue;
+        option.textContent = label;
+        select.appendChild(option);
+      }
+      select.value = value;
+      container.replaceChildren(select);
+      select.focus();
+      select.addEventListener("change", async () => {
+        saving = true;
+        await saveStatus(select.value);
+      });
+      select.addEventListener("blur", () => {
+        if (!saving) render(currentUseCase);
+      });
+    };
+  }
+
+  async function saveVote(department, value) {
     const res = await fetch(`${window.API_BASE}/use-cases/${currentUseCase.id}/vote`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
+      body: JSON.stringify({ department, value }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -108,10 +154,11 @@
     return true;
   }
 
-  // Click-to-edit for the logged-in user's own department's vote row - not
+  // Click-to-edit for a vote row the logged-in user is allowed to cast (any
+  // department in myDepartments - a user can represent more than one) - not
   // gated on isWriter like every other field here, since voting is a
   // prioboard action, independent of write access to the use case itself.
-  function attachVoteEdit(container, { value }) {
+  function attachVoteEdit(container, { department, value }) {
     container.classList.add("editable-field");
     container.title = "Klicken zum Bearbeiten";
     container.onclick = (e) => {
@@ -133,7 +180,7 @@
       select.focus();
       select.addEventListener("change", async () => {
         saving = true;
-        await saveVote(select.value);
+        await saveVote(department, select.value);
       });
       select.addEventListener("blur", () => {
         if (!saving) render(currentUseCase);
@@ -165,8 +212,8 @@
       }
       row.append(label, valueEl);
       container.appendChild(row);
-      if (dept === myDepartment) {
-        attachVoteEdit(valueEl, { value: vote ? vote.value : "" });
+      if (myDepartments.includes(dept)) {
+        attachVoteEdit(valueEl, { department: dept, value: vote ? vote.value : "" });
       }
     }
   }
@@ -465,25 +512,13 @@
     statusChip.className = "chip status-chip";
     statusChip.textContent = STATUS_LABELS[uc.status] || uc.status;
     statusEl.appendChild(statusChip);
-    if (isWriter && uc.status === "priorisiert") {
-      const startBtn = document.createElement("button");
-      startBtn.type = "button";
-      startBtn.className = "btn btn-ghost";
-      startBtn.textContent = "Umsetzung starten";
-      startBtn.addEventListener("click", async () => {
-        const res = await fetch(`${window.API_BASE}/use-cases/${uc.id}/status`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "in_umsetzung" }),
-        });
-        if (!res.ok) {
-          alert("Der Status konnte nicht geändert werden.");
-          return;
-        }
-        await loadUseCase();
-      });
-      statusEl.appendChild(startBtn);
+    if (uc.prioritized_round) {
+      const roundInfo = document.createElement("p");
+      roundInfo.className = "muted-text";
+      roundInfo.textContent = `Priorisiert: ${uc.prioritized_round} (${formatDate(uc.prioritized_at.slice(0, 10))})`;
+      statusEl.appendChild(roundInfo);
     }
+    attachStatusEdit(statusEl, { value: uc.status });
 
     const candidateEl = el("uc-session-candidate");
     candidateEl.replaceChildren();
@@ -531,7 +566,7 @@
     currentUseCase = uc;
     allUseCases = useCases;
     isWriter = me.is_writer;
-    myDepartment = me.department;
+    myDepartments = me.departments;
     voteData = votes;
     render(uc);
     el("uc-delete-link").hidden = !me.is_writer;

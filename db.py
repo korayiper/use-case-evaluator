@@ -394,8 +394,15 @@ def set_session_candidate(use_case_id: str, candidate: bool) -> None:
 
 
 def set_status(use_case_id: str, status: str) -> None:
+    """Writer-facing status change, in any direction (see app.api_set_status).
+    Reverting to "neu" clears the round stamp too - it's no longer accurate
+    to call this "prioritized in H1 2026" once that decision is undone."""
+    values = {"status": status}
+    if status == "neu":
+        values["prioritized_at"] = None
+        values["prioritized_round"] = None
     with ENGINE.begin() as conn:
-        conn.execute(update(use_cases).where(use_cases.c.id == use_case_id).values(status=status))
+        conn.execute(update(use_cases).where(use_cases.c.id == use_case_id).values(**values))
 
 
 def board_candidates() -> list[dict]:
@@ -421,12 +428,21 @@ def set_board_stage(stage: str) -> None:
         conn.execute(update(board_state).where(board_state.c.id == 1).values(stage=stage))
 
 
+def _current_round_label() -> str:
+    """Auto-derived twice-yearly round label, e.g. "H1 2026" / "H2 2026" -
+    no separate rounds table, just a stamp answering "which session was this
+    decided in" per use case."""
+    today = date.today()
+    half = "H1" if today.month <= 6 else "H2"
+    return f"{half} {today.year}"
+
+
 def finalize_board() -> None:
     """Director action closing out a prioritization session: every current
     candidate is stamped 'priorisiert' (unless already further along, i.e.
-    'in_umsetzung' - never downgrade), then the candidate/rank state is
-    cleared so the next twice-yearly cycle starts from an empty, freshly
-    curated slate. One transaction."""
+    'in_umsetzung' - never downgrade) plus which round it happened in, then
+    the candidate/rank state is cleared so the next twice-yearly cycle
+    starts from an empty, freshly curated slate. One transaction."""
     with ENGINE.begin() as conn:
         candidate_ids = [
             r["id"] for r in _all(conn, select(use_cases.c.id).where(use_cases.c.is_session_candidate.is_(True)))
@@ -435,7 +451,11 @@ def finalize_board() -> None:
             conn.execute(
                 update(use_cases)
                 .where(use_cases.c.id.in_(candidate_ids), use_cases.c.status != "in_umsetzung")
-                .values(status="priorisiert")
+                .values(
+                    status="priorisiert",
+                    prioritized_at=datetime.now(timezone.utc).isoformat(),
+                    prioritized_round=_current_round_label(),
+                )
             )
             conn.execute(
                 update(use_cases)

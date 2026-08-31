@@ -39,9 +39,17 @@ use_cases = Table(
     Column("economic_value", String(50)),
     Column("golive_date", String(10), nullable=False),
     Column("manual_rank", Integer),
-    # neu -> priorisiert (set only by finalizing a prioritization round) ->
-    # in_umsetzung (set only by the "Umsetzung starten" action). Forward-only.
+    # neu -> priorisiert (normally set only by finalizing a prioritization
+    # round) -> in_umsetzung ("Umsetzung starten") - the intended path is
+    # forward, but any writer may also move a use case backward as a manual
+    # correction (see app.api_set_status).
     Column("status", String(20), nullable=False, default="neu"),
+    # Which round a use case was last prioritized in and when - stamped by
+    # db.finalize_board(), cleared if status is manually reverted to "neu"
+    # (see db.set_status). Both null until the use case has ever been
+    # prioritized.
+    Column("prioritized_at", String(32)),
+    Column("prioritized_round", String(20)),
     # Curated by the use case manager: is this use case in scope for the
     # upcoming twice-yearly prioritization session? Replaces the old
     # automatic top-N cutoff - board_candidates() is now just "where this is
