@@ -90,6 +90,11 @@ def board_page(request: Request):
     return templates.TemplateResponse(request, "board.html")
 
 
+@app.get("/prioritized-print", response_class=HTMLResponse)
+def prioritized_print_page(request: Request):
+    return templates.TemplateResponse(request, "prioritized_print.html")
+
+
 @app.get("/api/me")
 def api_me(request: Request):
     user = auth.get_current_user(request)
