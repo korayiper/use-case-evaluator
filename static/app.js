@@ -227,8 +227,13 @@
 
     const { min_priority: minP, max_priority: maxP, ...opts } = state.options;
 
-    for (const uc of rows) {
+    rows.forEach((uc, index) => {
       const tr = document.createElement("tr");
+
+      const rowIdTd = document.createElement("td");
+      rowIdTd.className = "muted-text";
+      rowIdTd.textContent = index + 1;
+      tr.appendChild(rowIdTd);
 
       const nameTd = document.createElement("td");
       const nameLink = document.createElement("a");
@@ -352,7 +357,7 @@
       tr.appendChild(importantTd);
 
       tbody.appendChild(tr);
-    }
+    });
   }
 
   // ---------- timeline ----------
