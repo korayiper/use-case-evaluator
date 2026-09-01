@@ -136,6 +136,14 @@
       evChip.textContent = `${uc.economic_value_label} (${uc.vote_count} Stimme${uc.vote_count === 1 ? "" : "n"})`;
       li.appendChild(evChip);
 
+      if (uc.is_important) {
+        const importantChip = document.createElement("span");
+        importantChip.className = "chip status-chip";
+        importantChip.textContent = "Wichtig";
+        importantChip.title = uc.important_departments.join(", ");
+        li.appendChild(importantChip);
+      }
+
       if (state.canReorder) {
         li.addEventListener("dragstart", () => {
           state.dragIndex = index;
