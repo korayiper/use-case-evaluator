@@ -294,6 +294,10 @@ td:nth-child(2) {
 th:nth-child(2) { z-index: 2; }
 td:nth-child(2) { z-index: 1; }
 td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
+/* Truncate long names with an ellipsis instead of stretching the column -
+   keeps row height uniform; full name is available via the cell's title
+   tooltip and by clicking through to the detail page. */
+.name-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .table-link { color: var(--text-primary); text-decoration: none; }
 .table-link:hover { color: var(--series-1); text-decoration: underline; }
 .chip {

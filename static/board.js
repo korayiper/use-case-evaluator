@@ -126,6 +126,8 @@
       tr.appendChild(rankTd);
 
       const nameTd = document.createElement("td");
+      nameTd.className = "name-cell";
+      nameTd.title = uc.name;
       const nameLink = document.createElement("a");
       nameLink.className = "table-link";
       nameLink.href = `${window.ROOT_PATH}/use-case/${uc.id}`;
