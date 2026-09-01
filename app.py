@@ -3,7 +3,7 @@ from datetime import date
 from enum import Enum
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -11,6 +11,7 @@ from starlette.requests import Request
 
 import auth
 import db
+import export_excel
 import scoring
 from config import settings
 
@@ -90,9 +91,26 @@ def board_page(request: Request):
     return templates.TemplateResponse(request, "board.html")
 
 
-@app.get("/prioritized-print", response_class=HTMLResponse)
-def prioritized_print_page(request: Request):
-    return templates.TemplateResponse(request, "prioritized_print.html")
+@app.get("/api/export/prioritized.xlsx")
+def export_prioritized_xlsx():
+    prioritized = [uc for uc in db.list_use_cases() if uc["status"] == "priorisiert"]
+    prioritized.sort(key=lambda uc: uc["priority"], reverse=True)
+    buffer = export_excel.build_prioritized_workbook(prioritized)
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=priorisierte_anwendungsfaelle.xlsx"},
+    )
+
+
+@app.get("/api/export/board.xlsx")
+def export_board_xlsx():
+    buffer = export_excel.build_board_workbook(db.board_candidates())
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=priorisierungsboard.xlsx"},
+    )
 
 
 @app.get("/api/me")

@@ -11,7 +11,7 @@
     <h1>KI-Anwendungsfälle</h1>
     <div class="header-actions">
         <a class="btn btn-ghost" href="{{ request.scope.get('root_path', '') }}/board">Priorisierungsboard</a>
-        <a class="btn btn-ghost" href="{{ request.scope.get('root_path', '') }}/prioritized-print">Priorisierte drucken</a>
+        <a class="btn btn-ghost" href="{{ request.scope.get('root_path', '') }}/api/export/prioritized.xlsx">Priorisierte als Excel</a>
         <button id="toggle-add" class="btn btn-primary" type="button">+ Neuer Anwendungsfall</button>
     </div>
 </header>
