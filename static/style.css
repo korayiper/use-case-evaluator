@@ -490,20 +490,3 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
   box-shadow: 0 4px 14px rgba(0,0,0,0.2);
 }
 .tooltip strong { display: block; margin-bottom: 2px; font-size: 0.8125rem; }
-
-/* Print view */
-.print-only { display: none; }
-@media print {
-  .no-print { display: none !important; }
-  .print-only { display: block; }
-  /* Force light, black-on-white regardless of the viewer's dark-mode
-     preference - printed paper has no "dark mode", and colored
-     backgrounds either burn ink or print invisibly if the browser's
-     background-graphics option is off. */
-  :root { color-scheme: light; }
-  body, .panel, table, th, td { background: #ffffff !important; color: #000000 !important; }
-  th, td { border-color: #ccc !important; }
-  .table-scroll { overflow: visible; max-height: none; }
-  thead { display: table-header-group; }
-  @page { size: landscape; margin: 12mm; }
-}
