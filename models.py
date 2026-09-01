@@ -93,6 +93,20 @@ economic_value_votes = Table(
     Column("updated_at", String(32), nullable=False),
 )
 
+# A department's personal "this matters to us" flag, independent of the
+# formal economic_value vote - row presence IS the flag (mark = insert,
+# unmark = delete), so counting a department's current marks for the cap
+# (settings.toml's important_limit) is a plain COUNT(*). marked_by is a
+# plain audit column, like economic_value_votes.voter.
+use_case_important_marks = Table(
+    "use_case_important_marks",
+    metadata,
+    Column("use_case_id", String(36), ForeignKey("use_cases.id"), primary_key=True),
+    Column("department", String(10), primary_key=True),
+    Column("marked_by", String(200), nullable=False),
+    Column("updated_at", String(32), nullable=False),
+)
+
 # Single-row table (id is always 1) tracking which side of the twice-yearly
 # handoff currently owns drag-reordering: "prioboard" or
 # "board_of_management". See auth.require_board_reorder and

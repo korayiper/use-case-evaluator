@@ -338,6 +338,19 @@
       }
       tr.appendChild(candidateTd);
 
+      const importantTd = document.createElement("td");
+      if (uc.is_important) {
+        const chip = document.createElement("span");
+        chip.className = "chip status-chip";
+        chip.textContent = "Wichtig";
+        chip.title = uc.important_departments.join(", ");
+        importantTd.appendChild(chip);
+      } else {
+        importantTd.textContent = "–";
+        importantTd.className = "muted-text";
+      }
+      tr.appendChild(importantTd);
+
       tbody.appendChild(tr);
     }
   }

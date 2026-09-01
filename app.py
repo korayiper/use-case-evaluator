@@ -12,6 +12,7 @@ from starlette.requests import Request
 import auth
 import db
 import scoring
+from config import settings
 
 app = FastAPI(root_path="/ai-use-case-portfolio", title="AI Use Case Evaluator")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -153,6 +154,31 @@ def api_submit_vote(use_case_id: str, payload: VoteCreate, user: str = Depends(a
         raise HTTPException(status_code=403, detail="Sie vertreten diese Abteilung nicht.")
     db.upsert_vote(use_case_id, payload.department, user, payload.value.value)
     return {"status": "voted"}
+
+
+class ImportantUpdate(BaseModel):
+    department: str
+    important: bool
+
+
+@app.put("/api/use-cases/{use_case_id}/important", dependencies=[Depends(auth.require_prioboard)])
+def api_set_important(use_case_id: str, payload: ImportantUpdate, user: str = Depends(auth.require_prioboard)):
+    if not db.get_use_case(use_case_id):
+        raise HTTPException(status_code=404, detail="use case not found")
+    if payload.department not in auth.departments_for(user):
+        raise HTTPException(status_code=403, detail="Sie vertreten diese Abteilung nicht.")
+    limit = settings.get("important_limit", 15)
+    if (
+        payload.important
+        and not db.is_marked_important(use_case_id, payload.department)
+        and db.count_important_marks(payload.department) >= limit
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximal {limit} wichtige Anwendungsfälle pro Abteilung - bitte zuerst einen anderen entfernen.",
+        )
+    db.set_important(use_case_id, payload.department, payload.important, user)
+    return {"status": "updated"}
 
 
 @app.get("/api/board")

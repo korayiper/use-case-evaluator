@@ -232,6 +232,59 @@
     container.appendChild(summary);
   }
 
+  async function saveImportant(department, important) {
+    const res = await fetch(`${window.API_BASE}/use-cases/${currentUseCase.id}/important`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ department, important }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.detail || "Konnte nicht gespeichert werden.");
+      return false;
+    }
+    await loadUseCase();
+    return true;
+  }
+
+  // A boolean flag toggles directly on click - no intermediate "editing"
+  // state needed the way a select/text field has one, since there's only
+  // ever the one alternative (the opposite value).
+  function attachImportantEdit(container, { department, important }) {
+    container.classList.add("editable-field");
+    container.title = "Klicken zum Umschalten";
+    container.onclick = () => saveImportant(department, !important);
+  }
+
+  // Independent of the economic-value vote - a department's own "this
+  // matters to us" flag, capped per department (settings.toml's
+  // important_limit) rather than a second unlimited vote. Same
+  // department/editability shape as the vote breakdown, reusing the same
+  // full-department-list derivation from voteData.
+  function renderImportantBreakdown(container, uc) {
+    const allDepts = [...voteData.votes.map((v) => v.department), ...voteData.missing_departments].sort();
+    const importantSet = new Set(uc.important_departments);
+
+    container.className = "vote-breakdown";
+    container.replaceChildren();
+    for (const dept of allDepts) {
+      const row = document.createElement("div");
+      row.className = "vote-row";
+      const label = document.createElement("span");
+      label.className = "vote-dept";
+      label.textContent = dept;
+      const valueEl = document.createElement("span");
+      const isImportant = importantSet.has(dept);
+      valueEl.textContent = isImportant ? "Ja" : "Nein";
+      if (!isImportant) valueEl.className = "muted-text";
+      row.append(label, valueEl);
+      container.appendChild(row);
+      if (myDepartments.includes(dept)) {
+        attachImportantEdit(valueEl, { department: dept, important: isImportant });
+      }
+    }
+  }
+
   // Click-to-edit for a single-select field: swaps the display chip for a
   // <select> pre-filled with the current value; picking an option saves
   // immediately (there's no separate "done editing" moment for a select,
@@ -427,6 +480,7 @@
     });
 
     renderVoteBreakdown(el("uc-economic-value"), uc);
+    renderImportantBreakdown(el("uc-important"), uc);
 
     el("uc-value-added").replaceChildren(attrChip(uc.value_added_label, uc.value_added_points, options.value_added));
     attachSelectEdit(el("uc-value-added"), {
