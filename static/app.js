@@ -227,8 +227,13 @@
 
     const { min_priority: minP, max_priority: maxP, ...opts } = state.options;
 
-    for (const uc of rows) {
+    rows.forEach((uc, index) => {
       const tr = document.createElement("tr");
+
+      const rowIdTd = document.createElement("td");
+      rowIdTd.className = "muted-text";
+      rowIdTd.textContent = index + 1;
+      tr.appendChild(rowIdTd);
 
       const nameTd = document.createElement("td");
       const nameLink = document.createElement("a");
@@ -342,7 +347,7 @@
       if (uc.is_important) {
         const chip = document.createElement("span");
         chip.className = "chip status-chip";
-        chip.textContent = "Wichtig";
+        chip.textContent = `Wichtig (${uc.important_departments.length}/6)`;
         chip.title = uc.important_departments.join(", ");
         importantTd.appendChild(chip);
       } else {
@@ -352,7 +357,7 @@
       tr.appendChild(importantTd);
 
       tbody.appendChild(tr);
-    }
+    });
   }
 
   // ---------- timeline ----------

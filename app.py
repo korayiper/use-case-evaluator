@@ -234,7 +234,7 @@ def api_reorder_board(payload: ReorderRequest):
 @app.put("/api/board/handoff", dependencies=[Depends(auth.require_prioboard)])
 def api_board_handoff():
     if db.get_board_stage() != "prioboard":
-        raise HTTPException(status_code=400, detail="Die Priorisierung wurde bereits an den Vorstand übergeben.")
+        raise HTTPException(status_code=400, detail="Die Priorisierung wurde bereits an die GL übergeben.")
     db.set_board_stage("board_of_management")
     return {"status": "handed_off"}
 

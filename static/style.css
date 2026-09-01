@@ -281,16 +281,18 @@ th.sorted::after {
   color: var(--series-1);
 }
 
-/* Keep the Name column visible while scrolling horizontally. */
-th:first-child,
-td:first-child {
+/* Keep the Name column visible while scrolling horizontally - the second
+   column in both this table and the board table (after the row-number
+   column), not the first. */
+th:nth-child(2),
+td:nth-child(2) {
   position: sticky;
   left: 0;
   background: var(--surface-1);
   box-shadow: 1px 0 0 var(--gridline);
 }
-th:first-child { z-index: 2; }
-td:first-child { z-index: 1; }
+th:nth-child(2) { z-index: 2; }
+td:nth-child(2) { z-index: 1; }
 td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
 .table-link { color: var(--text-primary); text-decoration: none; }
 .table-link:hover { color: var(--series-1); text-decoration: underline; }
@@ -464,18 +466,10 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
 
 /* Prioritization board */
 .board-stage-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.board-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.board-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-1);
-  cursor: grab;
-}
-.board-rank { font-weight: 600; color: var(--text-muted); min-width: 24px; text-align: center; }
+.board-table th { cursor: default; }
+.board-table th:hover { color: var(--text-secondary); }
+.board-row { cursor: grab; }
+.board-rank { font-weight: 600; color: var(--text-muted); text-align: center; width: 32px; }
 
 /* Tooltip */
 .tooltip {

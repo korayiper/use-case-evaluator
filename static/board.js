@@ -3,7 +3,7 @@
 
   const { el, textColorFor, statusColorForPoints, categoryColor } = Common;
 
-  const STAGE_LABELS = { prioboard: "Phase: Prio-Board", board_of_management: "Phase: Vorstand" };
+  const STAGE_LABELS = { prioboard: "Phase: Prio-Board", board_of_management: "Phase: GL" };
 
   const state = {
     options: null,
@@ -59,7 +59,7 @@
   async function handoff() {
     const res = await fetch(`${window.API_BASE}/board/handoff`, { method: "PUT" });
     if (!res.ok) {
-      await reportError(res, "Konnte nicht an den Vorstand übergeben werden.");
+      await reportError(res, "Konnte nicht an die GL übergeben werden.");
       return;
     }
     await loadBoard();
@@ -96,52 +96,82 @@
     const { min_priority: minP, max_priority: maxP } = state.options;
 
     state.board.forEach((uc, index) => {
-      const li = document.createElement("li");
-      li.className = "board-row";
-      li.draggable = state.canReorder;
+      const tr = document.createElement("tr");
+      tr.className = "board-row";
+      tr.draggable = state.canReorder;
 
-      const rank = document.createElement("span");
-      rank.className = "board-rank";
-      rank.textContent = index + 1;
-      li.appendChild(rank);
+      const rankTd = document.createElement("td");
+      rankTd.className = "board-rank";
+      rankTd.textContent = index + 1;
+      tr.appendChild(rankTd);
 
+      const nameTd = document.createElement("td");
       const nameLink = document.createElement("a");
       nameLink.className = "table-link";
       nameLink.href = `${window.ROOT_PATH}/use-case/${uc.id}`;
       nameLink.textContent = uc.name;
-      nameLink.style.flex = "1 1 auto";
-      li.appendChild(nameLink);
+      nameTd.appendChild(nameLink);
+      tr.appendChild(nameTd);
 
+      const categoryTd = document.createElement("td");
       const categoryChip = document.createElement("span");
       categoryChip.className = "chip attr-chip";
       const catColor = categoryColor(uc.use_category, state.options.use_category);
       categoryChip.style.background = catColor;
       categoryChip.style.color = textColorFor(catColor);
       categoryChip.textContent = uc.use_category_label;
-      li.appendChild(categoryChip);
+      categoryTd.appendChild(categoryChip);
+      tr.appendChild(categoryTd);
 
+      const devTimeTd = document.createElement("td");
+      const devTimeChip = document.createElement("span");
+      devTimeChip.className = "chip attr-chip";
+      const devTimeColor = statusColorForPoints(uc.development_time_points, state.options.development_time);
+      devTimeChip.style.background = devTimeColor;
+      devTimeChip.style.color = textColorFor(devTimeColor);
+      devTimeChip.textContent = uc.development_time_label;
+      devTimeTd.appendChild(devTimeChip);
+      tr.appendChild(devTimeTd);
+
+      const priorityTd = document.createElement("td");
       const priorityChip = document.createElement("span");
       priorityChip.className = "chip priority-chip";
       const pColor = Common.priorityColor(uc.priority, minP, maxP);
       priorityChip.style.background = pColor;
       priorityChip.style.color = textColorFor(pColor);
       priorityChip.textContent = uc.priority;
-      li.appendChild(priorityChip);
+      priorityTd.appendChild(priorityChip);
+      tr.appendChild(priorityTd);
 
+      const evTd = document.createElement("td");
       const evChip = document.createElement("span");
       evChip.className = "chip attr-chip";
       const evColor = statusColorForPoints(uc.economic_value_points, state.options.economic_value);
       evChip.style.background = evColor;
       evChip.style.color = textColorFor(evColor);
-      evChip.textContent = `${uc.economic_value_label} (${uc.vote_count} Stimme${uc.vote_count === 1 ? "" : "n"})`;
-      li.appendChild(evChip);
+      evChip.textContent = uc.economic_value_label;
+      evTd.appendChild(evChip);
+      tr.appendChild(evTd);
+
+      const importantTd = document.createElement("td");
+      if (uc.is_important) {
+        const importantChip = document.createElement("span");
+        importantChip.className = "chip status-chip";
+        importantChip.textContent = `Wichtig (${uc.important_departments.length}/6)`;
+        importantChip.title = uc.important_departments.join(", ");
+        importantTd.appendChild(importantChip);
+      } else {
+        importantTd.textContent = "–";
+        importantTd.className = "muted-text";
+      }
+      tr.appendChild(importantTd);
 
       if (state.canReorder) {
-        li.addEventListener("dragstart", () => {
+        tr.addEventListener("dragstart", () => {
           state.dragIndex = index;
         });
-        li.addEventListener("dragover", (e) => e.preventDefault());
-        li.addEventListener("drop", async (e) => {
+        tr.addEventListener("dragover", (e) => e.preventDefault());
+        tr.addEventListener("drop", async (e) => {
           e.preventDefault();
           if (state.dragIndex === null || state.dragIndex === index) return;
           const [moved] = state.board.splice(state.dragIndex, 1);
@@ -152,7 +182,7 @@
         });
       }
 
-      list.appendChild(li);
+      list.appendChild(tr);
     });
   }
 
