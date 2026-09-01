@@ -10,6 +10,7 @@
     board: [],
     stage: "prioboard",
     currentUser: null,
+    isWriter: false,
     isPrioboard: false,
     isDirector: false,
     canReorder: false,
@@ -20,6 +21,7 @@
     const res = await fetch(`${window.API_BASE}/me`);
     const data = await res.json();
     state.currentUser = data.user;
+    state.isWriter = data.is_writer;
     state.isPrioboard = data.is_prioboard;
     state.isDirector = data.is_director;
   }
@@ -49,6 +51,24 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ordered_ids: state.board.map((uc) => uc.id) }),
     });
+  }
+
+  // Same permission and endpoint as the list/detail page's session-candidate
+  // toggle - writer-curated, not a prioboard/reorder action - just exposed
+  // directly here so removing an obvious non-fit doesn't require a trip to
+  // the detail page.
+  async function removeFromBoard(uc) {
+    if (!confirm(`"${uc.name}" von der Priorisierung entfernen?`)) return;
+    const res = await fetch(`${window.API_BASE}/use-cases/${uc.id}/session-candidate`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ candidate: false }),
+    });
+    if (!res.ok) {
+      await reportError(res, "Konnte nicht entfernt werden.");
+      return;
+    }
+    await loadBoard();
   }
 
   async function reportError(res, fallback) {
@@ -165,6 +185,17 @@
         importantTd.className = "muted-text";
       }
       tr.appendChild(importantTd);
+
+      const actionsTd = document.createElement("td");
+      if (state.isWriter) {
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn-ghost";
+        removeBtn.textContent = "Entfernen";
+        removeBtn.addEventListener("click", () => removeFromBoard(uc));
+        actionsTd.appendChild(removeBtn);
+      }
+      tr.appendChild(actionsTd);
 
       if (state.canReorder) {
         tr.addEventListener("dragstart", () => {

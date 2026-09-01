@@ -12,7 +12,11 @@
 </header>
 
 <main class="page-content">
-    <p><a id="back-link" href="{{ request.scope.get('root_path', '') }}/">&larr; Zurück zur Übersicht</a></p>
+    <p>
+        <a id="back-link" href="{{ request.scope.get('root_path', '') }}/">&larr; Zurück zur Übersicht</a>
+        &middot;
+        <a href="{{ request.scope.get('root_path', '') }}/prioritized-print">Priorisierte drucken</a>
+    </p>
 
     <section class="panel">
         <div class="panel-header">
@@ -39,6 +43,7 @@
                     <th>Priorität</th>
                     <th>Wirtschaftlicher Nutzen</th>
                     <th>Wichtig</th>
+                    <th>Aktionen</th>
                 </tr>
                 </thead>
                 <tbody id="board-list"></tbody>
