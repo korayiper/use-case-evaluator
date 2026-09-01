@@ -103,6 +103,16 @@ def export_prioritized_xlsx():
     )
 
 
+@app.get("/api/export/board.xlsx")
+def export_board_xlsx():
+    buffer = export_excel.build_board_workbook(db.board_candidates())
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=priorisierungsboard.xlsx"},
+    )
+
+
 @app.get("/api/me")
 def api_me(request: Request):
     user = auth.get_current_user(request)
