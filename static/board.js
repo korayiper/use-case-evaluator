@@ -149,7 +149,7 @@
       const evColor = statusColorForPoints(uc.economic_value_points, state.options.economic_value);
       evChip.style.background = evColor;
       evChip.style.color = textColorFor(evColor);
-      evChip.textContent = `${uc.economic_value_label} (${uc.vote_count} Stimme${uc.vote_count === 1 ? "" : "n"})`;
+      evChip.textContent = uc.economic_value_label;
       evTd.appendChild(evChip);
       tr.appendChild(evTd);
 
