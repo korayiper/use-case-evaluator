@@ -256,10 +256,13 @@ MAX_PRIORITY = (
 BACKLOG_START_DATE = date(2030, 1, 1)
 
 
-def is_backlog(value_added: str, ai_feasibility: str) -> bool:
-    """A use case falls into the backlog if its value is Tief and/or its AI
-    feasibility is Tief - not worth pursuing yet, or not achievable yet."""
-    return value_added == "low" or ai_feasibility == "low"
+def is_backlog(economic_value: str | None, ai_feasibility: str) -> bool:
+    """A use case falls into the backlog if its economic value is Sehr tief
+    and/or its AI feasibility is Tief - not worth pursuing yet, or not
+    achievable yet. economic_value is None before the first department
+    vote (see db._enrich()) - unscored is not the same as "very low", so
+    that alone never puts a use case in the backlog."""
+    return economic_value == "very_low" or ai_feasibility == "low"
 
 
 def development_months(value: str) -> int:

@@ -258,7 +258,7 @@ def _enrich(
         economic_value_points = 0
     months = scoring.development_months(d["development_time"])
     golive = date.fromisoformat(d["golive_date"])
-    backlog = scoring.is_backlog(d["value_added"], d["ai_feasibility"])
+    backlog = scoring.is_backlog(d["economic_value"], d["ai_feasibility"])
     start = scoring.BACKLOG_START_DATE if backlog else golive - timedelta(days=months * 30)
     d["priority"] = scoring.points(
         d["value_added"],

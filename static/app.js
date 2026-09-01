@@ -284,7 +284,7 @@
         backlogChip.style.background = bg;
         backlogChip.style.color = textColorFor(bg);
         backlogChip.textContent = "Backlog";
-        backlogChip.title = "Start nach 2030 (Breitenwirkung/Kultur und/oder KI-Umsetzbarkeit sind Tief)";
+        backlogChip.title = "Start nach 2030 (Wirtschaftlicher Nutzen ist Sehr tief und/oder KI-Umsetzbarkeit ist Tief)";
         startTd.appendChild(backlogChip);
       } else {
         startTd.textContent = formatDate(uc.start_date);
