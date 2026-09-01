@@ -8,7 +8,13 @@ from sqlalchemy.engine import URL
 
 import scoring
 from config import settings
-from models import board_state, economic_value_votes, use_case_dependencies, use_cases
+from models import (
+    board_state,
+    economic_value_votes,
+    use_case_dependencies,
+    use_case_important_marks,
+    use_cases,
+)
 
 # "sqlite" (default, used in dev) or "mssql" (prod) - see settings.toml /
 # .secrets.toml.example. Everything below is written against SQLAlchemy Core
@@ -204,11 +210,18 @@ def get_use_case(use_case_id: str) -> dict | None:
         vote_rows = _all(
             conn, select(economic_value_votes.c.value).where(economic_value_votes.c.use_case_id == use_case_id)
         )
+        important_rows = _all(
+            conn,
+            select(use_case_important_marks.c.department).where(
+                use_case_important_marks.c.use_case_id == use_case_id
+            ),
+        )
     return _enrich(
         row,
         [r["depends_on_id"] for r in dep_rows],
         [r["name"] for r in dep_rows],
         [r["value"] for r in vote_rows],
+        [r["department"] for r in important_rows],
     )
 
 
@@ -239,10 +252,15 @@ def delete_use_case(use_case_id: str) -> None:
 
 
 def _enrich(
-    row: dict, depends_on_ids: list[str], depends_on_names: list[str], vote_values: list[str] | None = None
+    row: dict,
+    depends_on_ids: list[str],
+    depends_on_names: list[str],
+    vote_values: list[str] | None = None,
+    important_departments: list[str] | None = None,
 ) -> dict:
     d = dict(row)
     vote_values = vote_values or []
+    important_departments = important_departments or []
     # economic_value is never entered directly (see use_cases.economic_value
     # in models.py) - it's purely the median of department votes. Before the
     # first vote, it's genuinely unscored: 0 points (a real, visible,
@@ -280,6 +298,8 @@ def _enrich(
     d["start_date"] = start.isoformat()
     d["depends_on"] = depends_on_ids
     d["depends_on_names"] = depends_on_names
+    d["important_departments"] = important_departments
+    d["is_important"] = bool(important_departments)
     d.update(
         scoring.labels_for(
             d["value_added"],
@@ -306,6 +326,9 @@ def list_use_cases() -> list[dict]:
             .order_by(use_cases.c.name),
         )
         vote_rows = _all(conn, select(economic_value_votes.c.use_case_id, economic_value_votes.c.value))
+        important_rows = _all(
+            conn, select(use_case_important_marks.c.use_case_id, use_case_important_marks.c.department)
+        )
     ids_map: dict[str, list[str]] = {}
     names_map: dict[str, list[str]] = {}
     for r in dep_rows:
@@ -314,8 +337,17 @@ def list_use_cases() -> list[dict]:
     votes_map: dict[str, list[str]] = {}
     for r in vote_rows:
         votes_map.setdefault(r["use_case_id"], []).append(r["value"])
+    important_map: dict[str, list[str]] = {}
+    for r in important_rows:
+        important_map.setdefault(r["use_case_id"], []).append(r["department"])
     return [
-        _enrich(row, ids_map.get(row["id"], []), names_map.get(row["id"], []), votes_map.get(row["id"], []))
+        _enrich(
+            row,
+            ids_map.get(row["id"], []),
+            names_map.get(row["id"], []),
+            votes_map.get(row["id"], []),
+            important_map.get(row["id"], []),
+        )
         for row in rows
     ]
 
@@ -375,6 +407,59 @@ def get_votes(use_case_id: str) -> list[dict]:
             .where(economic_value_votes.c.use_case_id == use_case_id)
             .order_by(economic_value_votes.c.department),
         )
+
+
+def count_important_marks(department: str) -> int:
+    """How many use cases this department currently has marked important -
+    checked against settings.toml's important_limit before allowing a new
+    mark (see app.api_set_important)."""
+    with ENGINE.connect() as conn:
+        return len(
+            _all(
+                conn,
+                select(use_case_important_marks.c.use_case_id).where(
+                    use_case_important_marks.c.department == department
+                ),
+            )
+        )
+
+
+def is_marked_important(use_case_id: str, department: str) -> bool:
+    with ENGINE.connect() as conn:
+        return (
+            _one(
+                conn,
+                select(use_case_important_marks.c.use_case_id).where(
+                    use_case_important_marks.c.use_case_id == use_case_id,
+                    use_case_important_marks.c.department == department,
+                ),
+            )
+            is not None
+        )
+
+
+def set_important(use_case_id: str, department: str, important: bool, marked_by: str) -> None:
+    """Row presence is the flag: marking inserts a row, unmarking deletes
+    it - the cap in app.api_set_important is a plain COUNT(*) over these
+    rows, not a stored counter. Delete-then-insert (rather than an
+    upsert) is simple and fully portable here since there's no
+    contention-sensitive value being merged, just a flag being (re)set."""
+    with ENGINE.begin() as conn:
+        conn.execute(
+            delete(use_case_important_marks).where(
+                use_case_important_marks.c.use_case_id == use_case_id,
+                use_case_important_marks.c.department == department,
+            )
+        )
+        if important:
+            conn.execute(
+                insert(use_case_important_marks).values(
+                    use_case_id=use_case_id,
+                    department=department,
+                    marked_by=marked_by,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
 
 
 def set_manual_rank(ordered_ids: list[str]) -> None:

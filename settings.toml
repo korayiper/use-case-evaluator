@@ -30,6 +30,10 @@ prioboard_users = [
     { user = "a20779", department = "KDIR" },
 ]
 directors_users = ["a20779"]
+# Each department can flag at most this many use cases as personally
+# "important" at once, independent of the economic value vote - a spotlight,
+# not a second unlimited vote. See app.api_set_important.
+important_limit = 15
 
 [development]
 db_backend = "sqlite"
