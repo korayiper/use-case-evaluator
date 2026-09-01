@@ -342,7 +342,7 @@
       if (uc.is_important) {
         const chip = document.createElement("span");
         chip.className = "chip status-chip";
-        chip.textContent = "Wichtig";
+        chip.textContent = `Wichtig (${uc.important_departments.length}/6)`;
         chip.title = uc.important_departments.join(", ");
         importantTd.appendChild(chip);
       } else {

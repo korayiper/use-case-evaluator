@@ -21,14 +21,29 @@
         </div>
         <div class="board-stage-bar">
             <span class="chip status-chip" id="board-stage-chip"></span>
-            <button type="button" id="board-handoff-btn" class="btn btn-primary" hidden>An Vorstand übergeben</button>
-            <button type="button" id="board-finalize-btn" class="btn btn-primary" hidden>Priorisierung abschließen</button>
+            <button type="button" id="board-handoff-btn" class="btn btn-primary" hidden>An GL übergeben</button>
+            <button type="button" id="board-finalize-btn" class="btn btn-primary" hidden>Priorisierung abschliessen</button>
         </div>
         <p class="muted-text" id="board-hint" hidden>
-            Ziehen Sie die Einträge per Drag &amp; Drop, um die Reihenfolge anzupassen. Änderungen werden sofort
+            Ziehe die Einträge per Drag &amp; Drop, um die Reihenfolge anzupassen. Änderungen werden sofort
             gespeichert.
         </p>
-        <ol id="board-list" class="board-list"></ol>
+        <div class="table-scroll">
+            <table id="board-table" class="board-table">
+                <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Nutzungskategorie</th>
+                    <th>Entwicklungsdauer</th>
+                    <th>Priorität</th>
+                    <th>Wirtschaftlicher Nutzen</th>
+                    <th>Wichtig</th>
+                </tr>
+                </thead>
+                <tbody id="board-list"></tbody>
+            </table>
+        </div>
         <p class="empty-state" id="board-empty" hidden>Keine Anwendungsfälle vorhanden.</p>
     </section>
 </main>

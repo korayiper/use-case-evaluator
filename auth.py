@@ -69,7 +69,7 @@ def require_prioboard(request: Request) -> str:
 def require_director(request: Request) -> str:
     user = get_current_user(request)
     if not is_director(user):
-        raise HTTPException(status_code=403, detail="Nur der Vorstand darf diese Aktion ausführen.")
+        raise HTTPException(status_code=403, detail="Nur die GL darf diese Aktion ausführen.")
     return user
 
 
@@ -84,11 +84,11 @@ def require_board_reorder(request: Request) -> str:
         if not is_director(user):
             raise HTTPException(
                 status_code=403,
-                detail="Die Priorisierung wurde an den Vorstand übergeben - nur der Vorstand darf jetzt neu ordnen.",
+                detail="Die Priorisierung wurde an die GL übergeben - nur die GL darf jetzt neu ordnen.",
             )
     elif not is_prioboard(user):
         raise HTTPException(
             status_code=403,
-            detail="Das Prio-Board muss zuerst eine Reihenfolge vorschlagen, bevor der Vorstand übernehmen kann.",
+            detail="Das Prio-Board muss zuerst eine Reihenfolge vorschlagen, bevor die GL übernehmen kann.",
         )
     return user
