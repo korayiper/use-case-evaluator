@@ -72,7 +72,7 @@ def build_board_workbook(board: list[dict]) -> io.BytesIO:
             uc["development_time_label"],
             uc["priority"],
             uc["economic_value_label"],
-            f"{len(uc['important_departments'])}/6" if uc["is_important"] else "",
+            f"Wichtig ({len(uc['important_departments'])}/6)" if uc["is_important"] else "–",
         ]
         for i, uc in enumerate(board, start=1)
     ]
