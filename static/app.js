@@ -236,15 +236,16 @@
       tr.appendChild(rowIdTd);
 
       const nameTd = document.createElement("td");
+      nameTd.className = "name-cell";
       const nameLink = document.createElement("a");
       nameLink.className = "table-link";
       nameLink.href = `${window.ROOT_PATH}/use-case/${uc.id}`;
       nameLink.textContent = uc.name;
       nameTd.appendChild(nameLink);
-      const titleParts = [];
+      const titleParts = [uc.name];
       if (uc.description) titleParts.push(`Beschreibung: ${uc.description}`);
       if (uc.value_added_description) titleParts.push(`Breitenwirkung/Kultur: ${uc.value_added_description}`);
-      if (titleParts.length) nameTd.title = titleParts.join("\n");
+      nameTd.title = titleParts.join("\n");
       tr.appendChild(nameTd);
 
       const initiatorTd = document.createElement("td");
