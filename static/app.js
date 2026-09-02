@@ -195,11 +195,17 @@
   function attrChip(label, value, options, key = "points") {
     const span = document.createElement("span");
     span.className = "chip attr-chip";
-    const bg = statusColorForPoints(value, options, key);
+    const opt = options.find((o) => o.label === label);
+    // Color by the matched option's own fixed points, not the raw value
+    // passed in - for economic_value, value is the vote median, a
+    // fractional number that only rounds to this label (see
+    // scoring.economic_value_nearest_label) rather than being it. Using
+    // the raw median would color two chips both reading "Hoch"
+    // differently depending on their exact vote mix.
+    const bg = statusColorForPoints(opt ? opt[key] : value, options, key);
     span.style.background = bg;
     span.style.color = textColorFor(bg);
     span.textContent = label;
-    const opt = options.find((o) => o.label === label);
     if (opt && opt.help) span.title = opt.help;
     return span;
   }
