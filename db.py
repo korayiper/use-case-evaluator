@@ -248,6 +248,10 @@ def delete_use_case(use_case_id: str) -> None:
                 )
             )
         )
+        conn.execute(delete(economic_value_votes).where(economic_value_votes.c.use_case_id == use_case_id))
+        conn.execute(
+            delete(use_case_important_marks).where(use_case_important_marks.c.use_case_id == use_case_id)
+        )
         conn.execute(delete(use_cases).where(use_cases.c.id == use_case_id))
 
 
