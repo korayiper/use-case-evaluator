@@ -168,7 +168,12 @@
       const evTd = document.createElement("td");
       const evChip = document.createElement("span");
       evChip.className = "chip attr-chip";
-      const evColor = statusColorForPoints(uc.economic_value_points, state.options.economic_value);
+      // Color by the matched option's own fixed points, not the raw vote
+      // median (uc.economic_value_points) - the median only rounds to
+      // this label, it isn't it, so using it directly could color two
+      // chips both reading e.g. "Hoch" differently.
+      const evOpt = state.options.economic_value.find((o) => o.label === uc.economic_value_label);
+      const evColor = statusColorForPoints(evOpt ? evOpt.points : uc.economic_value_points, state.options.economic_value);
       evChip.style.background = evColor;
       evChip.style.color = textColorFor(evColor);
       evChip.textContent = uc.economic_value_label;
