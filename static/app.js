@@ -75,6 +75,11 @@
     const res = await fetch(`${window.API_BASE}/options`);
     state.options = await res.json();
     UseCaseForm.setOptions(state.options);
+    // Default view excludes "Nicht umgesetzt" - a rejected use case is done,
+    // not something you'd normally want cluttering the working list. Set
+    // before setupFilters() builds the checkbox UI so it starts pre-checked
+    // rather than "alle" and flipping visibly after load.
+    state.filters.status = state.options.status.map((o) => o.value).filter((v) => v !== "nicht_umgesetzt");
     setupFilters(); // builds the filter DOM (incl. its own help-btn/panel pairs) - must run before setupHelpPanels()
     Common.setupHelpPanels(state.options);
   }
