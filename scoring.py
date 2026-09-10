@@ -203,13 +203,19 @@ ECONOMIC_VALUE_LABELS = {
     "very_low": "Sehr tief",
 }
 
-# Lifecycle status (use_cases.status) - not a scored attribute (no points),
-# just forward-only stages: neu -> priorisiert (set by finalizing a
-# prioritization round) -> in_umsetzung (set by "Umsetzung starten").
+# Lifecycle status (use_cases.status) - not a scored attribute (no points).
+# Intended path is forward (neu -> priorisiert, set by finalizing a
+# prioritization round -> in_umsetzung, set by "Umsetzung starten"), with
+# nicht_umgesetzt as a terminal outcome for a use case that was evaluated
+# and prioritized but ultimately decided against - distinct from
+# is_backlog (scoring.is_backlog), which means "not worth pursuing yet,"
+# not "decided against." Any writer may set any status in any direction
+# (see app.api_set_status), so this isn't an enforced state machine.
 STATUS_LABELS = {
     "neu": "Neu",
     "priorisiert": "Priorisiert",
     "in_umsetzung": "In Umsetzung",
+    "nicht_umgesetzt": "Nicht umgesetzt",
 }
 ECONOMIC_VALUE_DESCRIPTION = (
     'Der "Wirtschaftliche Nutzen" ist als Gesamtausprägung aus strategischer Relevanz/'

@@ -10,7 +10,12 @@
   let myDepartments = [];
   let voteData = { votes: [], missing_departments: [] };
 
-  const STATUS_LABELS = { neu: "Neu", priorisiert: "Priorisiert", in_umsetzung: "In Umsetzung" };
+  const STATUS_LABELS = {
+    neu: "Neu",
+    priorisiert: "Priorisiert",
+    in_umsetzung: "In Umsetzung",
+    nicht_umgesetzt: "Nicht umgesetzt",
+  };
 
   function useCaseIdFromPath() {
     return location.pathname.split("/").filter(Boolean).pop();
