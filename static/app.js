@@ -221,6 +221,65 @@
     return td;
   }
 
+  // The five scored attributes that sum up to the priority, in the order
+  // they appear in the score bar and its tooltip.
+  const SCORED_ATTRS = [
+    ["economic_value", "Wirtschaftlicher Nutzen"],
+    ["value_added", "Breitenwirkung/Kultur"],
+    ["development_time", "Entwicklungsdauer"],
+    ["process_criticality", "Prozesskritikalität"],
+    ["process_dependency", "Prozessabhängigkeit"],
+  ];
+  const SCORE_BAR_PX_PER_POINT = 3;
+
+  function scoreBreakdown(uc, opts) {
+    return SCORED_ATTRS.map(([key, name]) => {
+      const options = opts[key];
+      const label = uc[`${key}_label`];
+      const points = uc[`${key}_points`];
+      const maxPoints = Math.max(...options.map((o) => o.points));
+      // Same coloring rule as attrChip: by the matched class's fixed points.
+      // Economic value has no class before the first vote -> neutral gray.
+      const opt = options.find((o) => o.label === label);
+      const color = opt ? statusColorForPoints(opt.points, options) : "var(--gridline)";
+      return { name, label, points, maxPoints, color };
+    });
+  }
+
+  // Segment width = the attribute's maximum possible points, so each
+  // segment's visual weight matches how much it can move the priority.
+  function scoreBar(breakdown) {
+    const bar = document.createElement("span");
+    bar.className = "score-bar";
+    for (const part of breakdown) {
+      const seg = document.createElement("span");
+      seg.className = "score-seg";
+      seg.style.width = `${part.maxPoints * SCORE_BAR_PX_PER_POINT}px`;
+      seg.style.background = part.color;
+      bar.appendChild(seg);
+    }
+    return bar;
+  }
+
+  function showScoreTooltip(e, uc, breakdown) {
+    const tooltip = el("tooltip");
+    tooltip.innerHTML = "";
+    const title = document.createElement("strong");
+    title.textContent = `Priorität ${uc.priority}`;
+    tooltip.appendChild(title);
+    for (const part of breakdown) {
+      const line = document.createElement("div");
+      const dot = document.createElement("span");
+      dot.className = "legend-dot";
+      dot.style.background = part.color;
+      line.appendChild(dot);
+      line.append(`${part.name}: ${part.label} (${part.points}/${part.maxPoints}p)`);
+      tooltip.appendChild(line);
+    }
+    tooltip.hidden = false;
+    moveTooltip(e);
+  }
+
   function renderTable() {
     const tbody = el("use-case-tbody");
     tbody.innerHTML = "";
@@ -279,23 +338,25 @@
       categoryTd.appendChild(categoryChip);
       tr.appendChild(categoryTd);
 
-      tr.appendChild(attrCell(uc.economic_value_label, uc.economic_value_points, opts.economic_value));
-      tr.appendChild(attrCell(uc.value_added_label, uc.value_added_points, opts.value_added));
-      tr.appendChild(attrCell(uc.development_time_label, uc.development_time_points, opts.development_time));
-      tr.appendChild(attrCell(uc.process_criticality_label, uc.process_criticality_points, opts.process_criticality));
-      tr.appendChild(attrCell(uc.process_dependency_label, uc.process_dependency_points, opts.process_dependency));
-      tr.appendChild(attrCell(uc.ai_feasibility_label, uc.ai_feasibility_rank, opts.ai_feasibility, "rank"));
-
       const priorityTd = document.createElement("td");
       priorityTd.className = "priority-cell";
+      const priorityWrap = document.createElement("div");
+      priorityWrap.className = "priority-wrap";
       const chip = document.createElement("span");
       chip.className = "chip priority-chip";
       chip.textContent = uc.priority;
       const pColor = priorityColor(uc.priority, minP, maxP);
       chip.style.background = pColor;
       chip.style.color = textColorFor(pColor);
-      priorityTd.appendChild(chip);
+      const breakdown = scoreBreakdown(uc, opts);
+      priorityWrap.append(chip, scoreBar(breakdown));
+      priorityTd.appendChild(priorityWrap);
+      priorityTd.addEventListener("mouseenter", (e) => showScoreTooltip(e, uc, breakdown));
+      priorityTd.addEventListener("mousemove", (e) => moveTooltip(e));
+      priorityTd.addEventListener("mouseleave", hideTooltip);
       tr.appendChild(priorityTd);
+
+      tr.appendChild(attrCell(uc.ai_feasibility_label, uc.ai_feasibility_rank, opts.ai_feasibility, "rank"));
 
       const startTd = document.createElement("td");
       startTd.textContent = formatDate(uc.start_date);
