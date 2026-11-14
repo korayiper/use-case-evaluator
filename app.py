@@ -56,7 +56,21 @@ class UseCaseCreate(BaseModel):
     # unscored (0 points, "Ausstehend") regardless of what's stored here.
     economic_value: EconomicValue | None = None
     start_date: date
+    # Optional, e.g. "PP-1234"; validated/normalized by _normalize_pp_key().
+    pp_key: str = Field(default="", max_length=500)
     depends_on: list[str] = Field(default_factory=list)
+
+
+def _normalize_pp_key(raw: str) -> str | None:
+    """Empty -> None. Accepts "PP-1234", "pp-1234", just "1234", or a pasted
+    Jira link containing the key - always stored as "PP-1234"."""
+    text = raw.strip()
+    if not text:
+        return None
+    key = scoring.pp_key(text) or (f"PP-{text}" if text.isdigit() else None)
+    if not key:
+        raise HTTPException(status_code=400, detail="Ungültige PP-Nummer - erwartet z. B. PP-1234.")
+    return key
 
 
 def _validate_dependencies(use_case_id: str | None, depends_on_ids: list[str]) -> None:
@@ -286,6 +300,7 @@ def api_create_use_case(payload: UseCaseCreate):
         process_dependency=payload.process_dependency.value,
         economic_value=payload.economic_value.value if payload.economic_value else None,
         start_date=payload.start_date.isoformat(),
+        pp_key=_normalize_pp_key(payload.pp_key),
         depends_on_ids=payload.depends_on,
     )
     return {"status": "created"}
@@ -310,6 +325,7 @@ def api_update_use_case(use_case_id: str, payload: UseCaseCreate):
         process_dependency=payload.process_dependency.value,
         economic_value=payload.economic_value.value if payload.economic_value else None,
         start_date=payload.start_date.isoformat(),
+        pp_key=_normalize_pp_key(payload.pp_key),
         depends_on_ids=payload.depends_on,
     )
     return {"status": "updated"}

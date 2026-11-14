@@ -129,6 +129,7 @@ def add_use_case(
     process_dependency,
     economic_value,
     start_date,
+    pp_key=None,
     depends_on_ids=None,
 ) -> str:
     use_case_id = str(uuid.uuid4())
@@ -149,6 +150,7 @@ def add_use_case(
                 "process_dependency": process_dependency,
                 "economic_value": economic_value,
                 "start_date": start_date,
+                "pp_key": pp_key,
             },
         )
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
@@ -169,6 +171,7 @@ def update_use_case(
     process_dependency,
     economic_value,
     start_date,
+    pp_key=None,
     depends_on_ids=None,
 ):
     with ENGINE.begin() as conn:
@@ -188,6 +191,7 @@ def update_use_case(
                 process_dependency=process_dependency,
                 economic_value=economic_value,
                 start_date=start_date,
+                pp_key=pp_key,
             )
         )
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
@@ -299,6 +303,7 @@ def _enrich(
     d["vote_count"] = len(vote_values)
     d["is_backlog"] = scoring.is_backlog(d["status"])
     d["golive_date"] = golive.isoformat()
+    d["pp_link"] = f"{settings.jira_browse_url.rstrip('/')}/{d['pp_key']}" if d["pp_key"] else None
     d["depends_on"] = depends_on_ids
     d["depends_on_names"] = depends_on_names
     d["important_departments"] = important_departments

@@ -68,6 +68,7 @@
       process_criticality: uc.process_criticality,
       process_dependency: uc.process_dependency,
       start_date: uc.start_date,
+      pp_key: uc.pp_key || "",
       depends_on: uc.depends_on,
       ...overrides,
     };
@@ -330,6 +331,7 @@
     container.title = "Klicken zum Bearbeiten";
     container.onclick = (e) => {
       if (e.target.closest("select, textarea, input, button")) return; // ignore bubbled clicks from controls already inside
+      if (e.target.closest("a")) return; // a link inside (e.g. PP ticket) opens normally instead of editing
       let saving = false;
       const input = document.createElement("input");
       input.type = "text";
@@ -467,6 +469,8 @@
     document.title = uc.name;
     el("uc-name").textContent = uc.name;
     attachInputEdit(el("uc-name"), { fieldKey: "name", value: uc.name });
+    el("uc-pp-link").replaceChildren(Common.ppLink(uc));
+    attachInputEdit(el("uc-pp-link"), { fieldKey: "pp_key", value: uc.pp_key || "" });
     el("uc-idea-initiator").textContent = uc.idea_initiator;
     attachInputEdit(el("uc-idea-initiator"), { fieldKey: "idea_initiator", value: uc.idea_initiator });
 

@@ -104,6 +104,19 @@ window.Common = (() => {
     return new Date(isoDate).toLocaleDateString(LOCALE, { year: "numeric", month: "2-digit", day: "2-digit" });
   }
 
+  // Clickable PP ticket key (opens Jira in a new tab), or "–" if none.
+  function ppLink(uc) {
+    if (!uc.pp_link) return document.createTextNode("–");
+    const a = document.createElement("a");
+    a.className = "table-link pp-link";
+    a.href = uc.pp_link;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = uc.pp_key;
+    a.title = uc.pp_link;
+    return a;
+  }
+
   const SVG_NS = "http://www.w3.org/2000/svg";
 
   function svgEl(tag, attrs = {}) {
@@ -321,6 +334,7 @@ window.Common = (() => {
     priorityColor,
     categoryColor,
     formatDate,
+    ppLink,
     renderStructuredText,
     populateSelect,
     closeAllFilterMenus,

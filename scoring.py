@@ -6,6 +6,7 @@ German display labels live here too, so the frontend has a single source of
 truth for both the scoring and the German UI text.
 """
 
+import re
 from collections import OrderedDict
 
 # value -> points. Field/identifier stays "value_added" for backward
@@ -261,6 +262,16 @@ SCHEDULED_STATUSES = ("priorisiert", "in_umsetzung")
 
 def is_backlog(status: str) -> bool:
     return status not in SCHEDULED_STATUSES
+
+
+# Finds a PP ticket key in user input - "pp-1234" or a pasted Jira link like
+# ".../browse/PP-1234" -> "PP-1234".
+PP_KEY_RE = re.compile(r"\bPP-\d+\b", re.IGNORECASE)
+
+
+def pp_key(link: str | None) -> str | None:
+    match = PP_KEY_RE.search(link or "")
+    return match.group(0).upper() if match else None
 
 
 def development_months(value: str) -> int:

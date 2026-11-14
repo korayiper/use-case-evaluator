@@ -54,6 +54,7 @@ FIELD_ALIASES = {
     "process_criticality": ["prozesskritikalität", "prozesskritikalitaet"],
     "process_dependency": ["prozessintegration", "prozessabhängigkeit", "abhängigkeit"],
     "ai_feasibility": ["machbarkeit"],
+    "pp_key": ["pp-nr", "pp-nummer", "pp-ticket", "pp-link", "jira"],
     "start_date": ["startdatum", "projektstart", "start-datum"],
     # Older sheets only have the go-live date - the start is then derived from
     # it (go-live minus development time), see build_payload().
@@ -73,7 +74,7 @@ REQUIRED_FIELDS = [
 # At least one of these must be present: start_date directly, or golive_date
 # to derive it from.
 DATE_FIELDS = ["start_date", "golive_date"]
-OPTIONAL_FIELDS = ["description", "value_added_description"]
+OPTIONAL_FIELDS = ["description", "value_added_description", "pp_key"]
 
 # value -> German label dicts from scoring.py, reversed to label -> value, so
 # an Excel cell's German text can be translated back to the app's internal

@@ -40,6 +40,10 @@ use_cases = Table(
     # Entered by the use case manager; go-live is derived from it
     # (start + development_time) in db._enrich(), never stored.
     Column("start_date", String(10), nullable=False),
+    # Optional key of the use case's PP ticket (the bank's top-level Jira
+    # issue), e.g. "PP-1234". The clickable link is built from settings.toml's
+    # jira_browse_url in db._enrich(), never stored.
+    Column("pp_key", String(20)),
     Column("manual_rank", Integer),
     # neu -> priorisiert (normally set only by finalizing a prioritization
     # round) -> in_umsetzung ("Umsetzung starten") - the intended path is

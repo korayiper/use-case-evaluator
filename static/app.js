@@ -259,6 +259,10 @@
       nameTd.title = titleParts.join("\n");
       tr.appendChild(nameTd);
 
+      const ppTd = document.createElement("td");
+      ppTd.appendChild(Common.ppLink(uc));
+      tr.appendChild(ppTd);
+
       const initiatorTd = document.createElement("td");
       initiatorTd.textContent = uc.idea_initiator;
       tr.appendChild(initiatorTd);
