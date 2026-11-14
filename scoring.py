@@ -7,10 +7,9 @@ truth for both the scoring and the German UI text.
 """
 
 from collections import OrderedDict
-from datetime import date
 
 # value -> points. Field/identifier stays "value_added" for backward
-# compatibility (DB column, API field, is_backlog() check all key off it),
+# compatibility (DB column and API field both key off it),
 # even though the business now calls this attribute "Breitenwirkung/Kultur"
 # rather than "Mehrwert" - only the display name and help text changed.
 VALUE_ADDED = OrderedDict([
@@ -41,7 +40,7 @@ VALUE_ADDED_HELP = {
 }
 
 # value -> (points, months) - months is used to place the use case on the
-# timeline (start = golive_date - months).
+# timeline (go-live = start_date + months).
 DEVELOPMENT_TIME = OrderedDict([
     ("24 months", (1, 24)),
     ("12 months", (2, 12)),
@@ -207,9 +206,8 @@ ECONOMIC_VALUE_LABELS = {
 # Intended path is forward (neu -> priorisiert, set by finalizing a
 # prioritization round -> in_umsetzung, set by "Umsetzung starten"), with
 # nicht_umgesetzt as a terminal outcome for a use case that was evaluated
-# and prioritized but ultimately decided against - distinct from
-# is_backlog (scoring.is_backlog), which means "not worth pursuing yet,"
-# not "decided against." Any writer may set any status in any direction
+# and prioritized but ultimately decided against. Anything not (yet)
+# priorisiert/in_umsetzung counts as backlog - see is_backlog(). Any writer may set any status in any direction
 # (see app.api_set_status), so this isn't an enforced state machine.
 STATUS_LABELS = {
     "neu": "Neu",
@@ -256,19 +254,13 @@ MAX_PRIORITY = (
 )
 
 
-# A backlog use case's start date is overruled to this fixed, far-future
-# date instead of being computed from golive_date/development_time - it has
-# no real schedule until it's promoted out of the backlog.
-BACKLOG_START_DATE = date(2030, 1, 1)
+# Only prioritized use cases get developed - everything else (neu, and
+# nicht_umgesetzt) sits in the backlog by default and stays off the timeline.
+SCHEDULED_STATUSES = ("priorisiert", "in_umsetzung")
 
 
-def is_backlog(economic_value: str | None, ai_feasibility: str) -> bool:
-    """A use case falls into the backlog if its economic value is Sehr tief
-    and/or its AI feasibility is Tief - not worth pursuing yet, or not
-    achievable yet. economic_value is None before the first department
-    vote (see db._enrich()) - unscored is not the same as "very low", so
-    that alone never puts a use case in the backlog."""
-    return economic_value == "very_low" or ai_feasibility == "low"
+def is_backlog(status: str) -> bool:
+    return status not in SCHEDULED_STATUSES
 
 
 def development_months(value: str) -> int:

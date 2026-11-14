@@ -128,7 +128,7 @@ def add_use_case(
     process_criticality,
     process_dependency,
     economic_value,
-    golive_date,
+    start_date,
     depends_on_ids=None,
 ) -> str:
     use_case_id = str(uuid.uuid4())
@@ -148,7 +148,7 @@ def add_use_case(
                 "process_criticality": process_criticality,
                 "process_dependency": process_dependency,
                 "economic_value": economic_value,
-                "golive_date": golive_date,
+                "start_date": start_date,
             },
         )
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
@@ -168,7 +168,7 @@ def update_use_case(
     process_criticality,
     process_dependency,
     economic_value,
-    golive_date,
+    start_date,
     depends_on_ids=None,
 ):
     with ENGINE.begin() as conn:
@@ -187,7 +187,7 @@ def update_use_case(
                 process_criticality=process_criticality,
                 process_dependency=process_dependency,
                 economic_value=economic_value,
-                golive_date=golive_date,
+                start_date=start_date,
             )
         )
         _set_dependencies(conn, use_case_id, depends_on_ids or [])
@@ -279,9 +279,8 @@ def _enrich(
         d["economic_value"] = None
         economic_value_points = 0
     months = scoring.development_months(d["development_time"])
-    golive = date.fromisoformat(d["golive_date"])
-    backlog = scoring.is_backlog(d["economic_value"], d["ai_feasibility"])
-    start = scoring.BACKLOG_START_DATE if backlog else golive - timedelta(days=months * 30)
+    start = date.fromisoformat(d["start_date"])
+    golive = start + timedelta(days=months * 30)
     d["priority"] = scoring.points(
         d["value_added"],
         d["development_time"],
@@ -298,8 +297,8 @@ def _enrich(
     d["ai_feasibility_rank"] = scoring.AI_FEASIBILITY_RANK[d["ai_feasibility"]]
     d["economic_value_points"] = economic_value_points
     d["vote_count"] = len(vote_values)
-    d["is_backlog"] = backlog
-    d["start_date"] = start.isoformat()
+    d["is_backlog"] = scoring.is_backlog(d["status"])
+    d["golive_date"] = golive.isoformat()
     d["depends_on"] = depends_on_ids
     d["depends_on_names"] = depends_on_names
     d["important_departments"] = important_departments
@@ -320,7 +319,7 @@ def _enrich(
 
 def list_use_cases() -> list[dict]:
     with ENGINE.connect() as conn:
-        rows = _all(conn, select(use_cases).order_by(use_cases.c.golive_date))
+        rows = _all(conn, select(use_cases).order_by(use_cases.c.start_date))
         dep_rows = _all(
             conn,
             select(use_case_dependencies.c.use_case_id, use_case_dependencies.c.depends_on_id, use_cases.c.name)

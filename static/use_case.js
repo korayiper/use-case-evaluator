@@ -67,7 +67,7 @@
       development_time: uc.development_time,
       process_criticality: uc.process_criticality,
       process_dependency: uc.process_dependency,
-      golive_date: uc.golive_date,
+      start_date: uc.start_date,
       depends_on: uc.depends_on,
       ...overrides,
     };
@@ -544,21 +544,12 @@
     priorityChip.textContent = uc.priority;
     el("uc-priority").replaceChildren(priorityChip);
 
-    const startEl = el("uc-start");
-    if (uc.is_backlog) {
-      const backlogChip = document.createElement("span");
-      backlogChip.className = "chip backlog-chip";
-      const bg = categoryColor(uc.use_category, options.use_category);
-      backlogChip.style.background = bg;
-      backlogChip.style.color = textColorFor(bg);
-      backlogChip.textContent = "Backlog";
-      startEl.replaceChildren(backlogChip);
-    } else {
-      startEl.textContent = formatDate(uc.start_date);
-    }
+    el("uc-start").textContent = formatDate(uc.start_date);
+    attachDateEdit(el("uc-start"), { fieldKey: "start_date", value: uc.start_date });
 
+    // Derived (start + Entwicklungsdauer), not editable on its own.
     el("uc-golive").textContent = formatDate(uc.golive_date);
-    attachDateEdit(el("uc-golive"), { fieldKey: "golive_date", value: uc.golive_date });
+    el("uc-golive").title = "Berechnet: Start + Entwicklungsdauer";
 
     for (const [containerId, fieldKey, text] of [
       ["uc-description", "description", uc.description],

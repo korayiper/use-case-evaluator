@@ -294,18 +294,7 @@
       tr.appendChild(priorityTd);
 
       const startTd = document.createElement("td");
-      if (uc.is_backlog) {
-        const backlogChip = document.createElement("span");
-        backlogChip.className = "chip backlog-chip";
-        const bg = categoryColor(uc.use_category);
-        backlogChip.style.background = bg;
-        backlogChip.style.color = textColorFor(bg);
-        backlogChip.textContent = "Backlog";
-        backlogChip.title = "Start nach 2030 (Wirtschaftlicher Nutzen ist Sehr tief und/oder KI-Umsetzbarkeit ist Tief)";
-        startTd.appendChild(backlogChip);
-      } else {
-        startTd.textContent = formatDate(uc.start_date);
-      }
+      startTd.textContent = formatDate(uc.start_date);
       tr.appendChild(startTd);
 
       const goliveTd = document.createElement("td");
@@ -396,13 +385,13 @@
     const container = el("timeline");
     container.innerHTML = "";
 
-    const rows = sortedUseCases();
+    // Only prioritized use cases get developed - backlog (everything else)
+    // has no schedule and isn't shown here at all.
+    const scheduled = sortedUseCases().filter((uc) => !uc.is_backlog);
     const timelineEmpty = el("timeline-empty");
-    timelineEmpty.hidden = rows.length > 0;
-    timelineEmpty.textContent = emptyStateText();
+    timelineEmpty.hidden = scheduled.length > 0;
+    timelineEmpty.textContent = "Keine priorisierten Anwendungsfälle vorhanden.";
     renderLegend();
-    renderBacklogList(rows.filter((uc) => uc.is_backlog));
-    const scheduled = rows.filter((uc) => !uc.is_backlog);
     if (scheduled.length === 0) {
       return;
     }
@@ -486,31 +475,6 @@
 
     grid.appendChild(rowsEl);
     if (todayLine) grid.appendChild(todayLine);
-  }
-
-  // Backlog items have no real schedule (their start_date is a sentinel, not
-  // a plan) - showing them as a duration bar on the date scale is misleading
-  // (produces an unreadable sliver) and drags the whole scale out to 2030.
-  // They get their own always-visible chip list instead, off the date axis.
-  function renderBacklogList(backlogRows) {
-    const section = el("timeline-backlog");
-    const list = el("timeline-backlog-list");
-    list.innerHTML = "";
-    section.hidden = backlogRows.length === 0;
-    if (backlogRows.length === 0) return;
-
-    for (const uc of backlogRows) {
-      const chip = document.createElement("span");
-      chip.className = "chip backlog-chip";
-      const bg = categoryColor(uc.use_category);
-      chip.style.background = bg;
-      chip.style.color = textColorFor(bg);
-      chip.textContent = uc.name;
-      chip.addEventListener("mouseenter", (e) => showTooltip(e, uc));
-      chip.addEventListener("mousemove", (e) => moveTooltip(e));
-      chip.addEventListener("mouseleave", hideTooltip);
-      list.appendChild(chip);
-    }
   }
 
   function renderLegend() {

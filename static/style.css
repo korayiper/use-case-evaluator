@@ -350,18 +350,6 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
   min-width: 720px;
 }
 
-.timeline-backlog {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--gridline);
-}
-.backlog-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
-}
-.backlog-chip { border: 1.5px dashed var(--text-muted); opacity: 0.85; cursor: default; }
 .timeline-axis {
   position: relative;
   height: 24px;

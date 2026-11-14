@@ -79,17 +79,14 @@
     <section class="panel">
         <div class="panel-header">
             <h2>Zeitachse</h2>
-            <p class="muted-text">Balken laufen vom geschätzten Projektstart (Go-Live minus Entwicklungsdauer) bis zum
-                Go-Live. Die Farbe zeigt die Nutzungskategorie; die Priorität steht im Tooltip.</p>
+            <p class="muted-text">Zeigt nur priorisierte Anwendungsfälle (Priorisiert / In Umsetzung) – alles andere
+                ist im Backlog. Balken laufen vom Startdatum bis zum Go-Live (Start plus Entwicklungsdauer). Die Farbe
+                zeigt die Nutzungskategorie; die Priorität steht im Tooltip.</p>
         </div>
         <div id="timeline-legend" class="timeline-legend"></div>
         <div class="timeline-scroll">
             <div id="timeline"></div>
             <p class="empty-state" id="timeline-empty" hidden>Noch keine Anwendungsfälle vorhanden.</p>
-        </div>
-        <div id="timeline-backlog" class="timeline-backlog" hidden>
-            <p class="muted-text">Backlog <span class="optional">(Start nach 2030)</span></p>
-            <div id="timeline-backlog-list" class="backlog-chip-list"></div>
         </div>
     </section>
 

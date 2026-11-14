@@ -15,6 +15,7 @@ PRIORITIZED_COLUMNS = [
     ("Wirtschaftlicher Nutzen", "economic_value_label"),
     ("Priorität", "priority"),
     ("Entwicklungsdauer", "development_time_label"),
+    ("Start", "start_date"),
     ("Go-Live", "golive_date"),
     ("Priorisiert", "prioritized_round"),
 ]

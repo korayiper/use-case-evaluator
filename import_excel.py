@@ -26,7 +26,7 @@ to existing entries.
 
 import argparse
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import openpyxl
@@ -54,6 +54,9 @@ FIELD_ALIASES = {
     "process_criticality": ["prozesskritikalität", "prozesskritikalitaet"],
     "process_dependency": ["prozessintegration", "prozessabhängigkeit", "abhängigkeit"],
     "ai_feasibility": ["machbarkeit"],
+    "start_date": ["startdatum", "projektstart", "start-datum"],
+    # Older sheets only have the go-live date - the start is then derived from
+    # it (go-live minus development time), see build_payload().
     "golive_date": ["einführungszeitpunkt", "einfuehrungszeitpunkt", "go-live", "golive"],
 }
 
@@ -66,8 +69,10 @@ REQUIRED_FIELDS = [
     "development_time",
     "process_criticality",
     "process_dependency",
-    "golive_date",
 ]
+# At least one of these must be present: start_date directly, or golive_date
+# to derive it from.
+DATE_FIELDS = ["start_date", "golive_date"]
 OPTIONAL_FIELDS = ["description", "value_added_description"]
 
 # value -> German label dicts from scoring.py, reversed to label -> value, so
@@ -123,7 +128,7 @@ def parse_value(field: str, raw) -> tuple[str | None, str | None]:
     """Returns (parsed_value, error) - error is None on success."""
     if raw is None or str(raw).strip() == "":
         return None, "leer"
-    if field == "golive_date":
+    if field in DATE_FIELDS:
         parsed = parse_date(raw)
         if parsed is None:
             return None, f"Datum nicht erkannt: {raw!r}"
@@ -161,6 +166,13 @@ def build_payload(column_map: dict[int, str], row) -> tuple[dict, list[str]]:
                 errors.append(f"{field}: {error}")
             continue
         payload[field] = value
+    golive = payload.pop("golive_date", None)
+    if "start_date" not in payload:
+        if golive is None:
+            errors.append("start_date: leer (weder Startdatum noch Go-Live angegeben)")
+        elif "development_time" in payload:
+            months = scoring.development_months(payload["development_time"])
+            payload["start_date"] = (date.fromisoformat(golive) - timedelta(days=months * 30)).isoformat()
     return payload, errors
 
 
@@ -191,6 +203,8 @@ def main():
     print()
 
     missing_required = [f for f in REQUIRED_FIELDS if f not in column_map.values()]
+    if not any(f in column_map.values() for f in DATE_FIELDS):
+        missing_required.append("start_date (oder golive_date)")
     if missing_required:
         print("Für folgende Pflichtfelder wurde keine Spalte gefunden:")
         for field in missing_required:

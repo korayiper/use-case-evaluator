@@ -55,7 +55,7 @@ class UseCaseCreate(BaseModel):
     # doesn't require it; db._enrich() treats a vote-less use case as
     # unscored (0 points, "Ausstehend") regardless of what's stored here.
     economic_value: EconomicValue | None = None
-    golive_date: date
+    start_date: date
     depends_on: list[str] = Field(default_factory=list)
 
 
@@ -285,7 +285,7 @@ def api_create_use_case(payload: UseCaseCreate):
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
         economic_value=payload.economic_value.value if payload.economic_value else None,
-        golive_date=payload.golive_date.isoformat(),
+        start_date=payload.start_date.isoformat(),
         depends_on_ids=payload.depends_on,
     )
     return {"status": "created"}
@@ -309,7 +309,7 @@ def api_update_use_case(use_case_id: str, payload: UseCaseCreate):
         process_criticality=payload.process_criticality.value,
         process_dependency=payload.process_dependency.value,
         economic_value=payload.economic_value.value if payload.economic_value else None,
-        golive_date=payload.golive_date.isoformat(),
+        start_date=payload.start_date.isoformat(),
         depends_on_ids=payload.depends_on,
     )
     return {"status": "updated"}

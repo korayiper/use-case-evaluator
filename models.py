@@ -37,7 +37,9 @@ use_cases = Table(
     # the use case manager is done evaluating everything else - never entered
     # directly, and never required at creation.
     Column("economic_value", String(50)),
-    Column("golive_date", String(10), nullable=False),
+    # Entered by the use case manager; go-live is derived from it
+    # (start + development_time) in db._enrich(), never stored.
+    Column("start_date", String(10), nullable=False),
     Column("manual_rank", Integer),
     # neu -> priorisiert (normally set only by finalizing a prioritization
     # round) -> in_umsetzung ("Umsetzung starten") - the intended path is
