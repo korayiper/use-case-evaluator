@@ -533,7 +533,7 @@ def _current_round_label() -> str:
 def finalize_board() -> None:
     """Director action closing out a prioritization session: every current
     candidate is stamped 'priorisiert' (unless already further along, i.e.
-    'in_umsetzung' - never downgrade) plus which round it happened in, then
+    'in_umsetzung' or 'umgesetzt' - never downgrade) plus which round it happened in, then
     the candidate/rank state is cleared so the next twice-yearly cycle
     starts from an empty, freshly curated slate. One transaction."""
     with ENGINE.begin() as conn:
@@ -543,7 +543,7 @@ def finalize_board() -> None:
         if candidate_ids:
             conn.execute(
                 update(use_cases)
-                .where(use_cases.c.id.in_(candidate_ids), use_cases.c.status != "in_umsetzung")
+                .where(use_cases.c.id.in_(candidate_ids), use_cases.c.status.not_in(("in_umsetzung", "umgesetzt")))
                 .values(
                     status="priorisiert",
                     prioritized_at=datetime.now(timezone.utc).isoformat(),

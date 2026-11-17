@@ -46,7 +46,7 @@ use_cases = Table(
     Column("pp_key", String(20)),
     Column("manual_rank", Integer),
     # neu -> priorisiert (normally set only by finalizing a prioritization
-    # round) -> in_umsetzung ("Umsetzung starten") - the intended path is
+    # round) -> in_umsetzung ("Umsetzung starten") -> umgesetzt (done) - the intended path is
     # forward, but any writer may also move a use case backward as a manual
     # correction (see app.api_set_status).
     Column("status", String(20), nullable=False, default="neu"),

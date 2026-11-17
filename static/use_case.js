@@ -14,6 +14,7 @@
     neu: "Neu",
     priorisiert: "Priorisiert",
     in_umsetzung: "In Umsetzung",
+    umgesetzt: "Umgesetzt",
     nicht_umgesetzt: "Nicht umgesetzt",
   };
 

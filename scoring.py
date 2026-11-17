@@ -205,7 +205,8 @@ ECONOMIC_VALUE_LABELS = {
 
 # Lifecycle status (use_cases.status) - not a scored attribute (no points).
 # Intended path is forward (neu -> priorisiert, set by finalizing a
-# prioritization round -> in_umsetzung, set by "Umsetzung starten"), with
+# prioritization round -> in_umsetzung, set by "Umsetzung starten" ->
+# umgesetzt once it's live/done), with
 # nicht_umgesetzt as a terminal outcome for a use case that was evaluated
 # and prioritized but ultimately decided against. Anything not (yet)
 # priorisiert/in_umsetzung counts as backlog - see is_backlog(). Any writer may set any status in any direction
@@ -214,6 +215,7 @@ STATUS_LABELS = {
     "neu": "Neu",
     "priorisiert": "Priorisiert",
     "in_umsetzung": "In Umsetzung",
+    "umgesetzt": "Umgesetzt",
     "nicht_umgesetzt": "Nicht umgesetzt",
 }
 ECONOMIC_VALUE_DESCRIPTION = (
@@ -257,7 +259,8 @@ MAX_PRIORITY = (
 
 # Only prioritized use cases get developed - everything else (neu, and
 # nicht_umgesetzt) sits in the backlog by default and stays off the timeline.
-SCHEDULED_STATUSES = ("priorisiert", "in_umsetzung")
+# umgesetzt stays on the timeline as history of what was delivered.
+SCHEDULED_STATUSES = ("priorisiert", "in_umsetzung", "umgesetzt")
 
 
 def is_backlog(status: str) -> bool:
