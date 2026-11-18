@@ -13,6 +13,10 @@ sqlite_path = "usecases.db"
 # who can create/edit/delete is just this hardcoded list of a-numbers,
 # everyone else gets read-only. Edit this list to add/remove writers.
 remote_user_header = "X-Remote-User"
+
+# Base URL for PP tickets - the app stores only the key (e.g. "PP-1234") and
+# links to jira_browse_url + key.
+jira_browse_url = "https://jira.example.ch/browse/"
 writer_users = ["a20779"]
 
 # Phase 1 (same pattern as writer_users): who's on the prio board, and which

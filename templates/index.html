@@ -52,15 +52,11 @@
                 <tr>
                     <th>#</th>
                     <th data-sort="name" class="name-cell">Name</th>
+                    <th data-sort="pp_key">PP</th>
                     <th data-sort="idea_initiator">Ideengeber</th>
                     <th data-sort="use_category_label">Nutzungskategorie</th>
-                    <th data-sort="economic_value_points">Wirtschaftlicher Nutzen</th>
-                    <th data-sort="value_added_points">Breitenwirkung/Kultur</th>
-                    <th data-sort="development_time_points">Entwicklungsdauer</th>
-                    <th data-sort="process_criticality_points">Prozesskritikalität</th>
-                    <th data-sort="process_dependency_points">Prozessabhängigkeit</th>
+                    <th data-sort="priority" title="Summe der fünf bewerteten Kriterien - Details beim Überfahren">Priorität</th>
                     <th data-sort="ai_feasibility_rank">KI-Umsetzbarkeit</th>
-                    <th data-sort="priority">Priorität</th>
                     <th data-sort="start_date">Start</th>
                     <th data-sort="golive_date">Go-Live</th>
                     <th data-sort="depends_on_names">Abhängig von</th>
@@ -79,17 +75,14 @@
     <section class="panel">
         <div class="panel-header">
             <h2>Zeitachse</h2>
-            <p class="muted-text">Balken laufen vom geschätzten Projektstart (Go-Live minus Entwicklungsdauer) bis zum
-                Go-Live. Die Farbe zeigt die Nutzungskategorie; die Priorität steht im Tooltip.</p>
+            <p class="muted-text">Zeigt nur priorisierte Anwendungsfälle (Priorisiert / In Umsetzung / Umgesetzt) – alles andere
+                ist im Backlog. Balken laufen vom Startdatum bis zum Go-Live (Start plus Entwicklungsdauer). Die Farbe
+                zeigt die Nutzungskategorie; die Priorität steht im Tooltip.</p>
         </div>
         <div id="timeline-legend" class="timeline-legend"></div>
         <div class="timeline-scroll">
             <div id="timeline"></div>
             <p class="empty-state" id="timeline-empty" hidden>Noch keine Anwendungsfälle vorhanden.</p>
-        </div>
-        <div id="timeline-backlog" class="timeline-backlog" hidden>
-            <p class="muted-text">Backlog <span class="optional">(Start nach 2030)</span></p>
-            <div id="timeline-backlog-list" class="backlog-chip-list"></div>
         </div>
     </section>
 

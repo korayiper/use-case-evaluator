@@ -98,7 +98,8 @@ window.UseCaseForm = (() => {
         development_time: form.development_time.value,
         process_criticality: form.process_criticality.value,
         process_dependency: form.process_dependency.value,
-        golive_date: form.golive_date.value,
+        start_date: form.start_date.value,
+        pp_key: form.pp_key.value.trim(),
         depends_on: state.formDependsOn,
       };
 

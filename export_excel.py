@@ -10,11 +10,13 @@ from openpyxl.utils import get_column_letter
 
 PRIORITIZED_COLUMNS = [
     ("Name", "name"),
+    ("PP", "pp_key"),
     ("Ideengeber", "idea_initiator"),
     ("Nutzungskategorie", "use_category_label"),
     ("Wirtschaftlicher Nutzen", "economic_value_label"),
     ("Priorität", "priority"),
     ("Entwicklungsdauer", "development_time_label"),
+    ("Start", "start_date"),
     ("Go-Live", "golive_date"),
     ("Priorisiert", "prioritized_round"),
 ]
@@ -49,6 +51,13 @@ def build_prioritized_workbook(use_cases: list[dict]) -> io.BytesIO:
     headers = [label for label, _ in PRIORITIZED_COLUMNS]
     rows = [[uc.get(key) or "" for _, key in PRIORITIZED_COLUMNS] for uc in use_cases]
     _write_sheet(ws, headers, rows)
+    # Make the PP key clickable, like in the app.
+    pp_col = headers.index("PP") + 1
+    for row_idx, uc in enumerate(use_cases, start=2):
+        if uc.get("pp_link"):
+            cell = ws.cell(row=row_idx, column=pp_col)
+            cell.hyperlink = uc["pp_link"]
+            cell.style = "Hyperlink"
 
     buffer = io.BytesIO()
     wb.save(buffer)

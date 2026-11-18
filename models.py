@@ -37,10 +37,16 @@ use_cases = Table(
     # the use case manager is done evaluating everything else - never entered
     # directly, and never required at creation.
     Column("economic_value", String(50)),
-    Column("golive_date", String(10), nullable=False),
+    # Entered by the use case manager; go-live is derived from it
+    # (start + development_time) in db._enrich(), never stored.
+    Column("start_date", String(10), nullable=False),
+    # Optional key of the use case's PP ticket (the bank's top-level Jira
+    # issue), e.g. "PP-1234". The clickable link is built from settings.toml's
+    # jira_browse_url in db._enrich(), never stored.
+    Column("pp_key", String(20)),
     Column("manual_rank", Integer),
     # neu -> priorisiert (normally set only by finalizing a prioritization
-    # round) -> in_umsetzung ("Umsetzung starten") - the intended path is
+    # round) -> in_umsetzung ("Umsetzung starten") -> umgesetzt (done) - the intended path is
     # forward, but any writer may also move a use case backward as a manual
     # correction (see app.api_set_status).
     Column("status", String(20), nullable=False, default="neu"),

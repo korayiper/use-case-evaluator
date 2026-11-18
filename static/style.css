@@ -309,6 +309,9 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
   font-size: 0.8125rem;
 }
 .priority-chip { min-width: 28px; font-variant-numeric: tabular-nums; }
+.priority-wrap { display: flex; align-items: center; gap: 8px; }
+.score-bar { display: inline-flex; gap: 2px; }
+.score-seg { height: 8px; border-radius: 2px; }
 .attr-chip { font-weight: 500; white-space: nowrap; }
 .status-chip { background: var(--series-1-wash); color: var(--series-1); }
 
@@ -350,18 +353,6 @@ td.priority-cell { font-variant-numeric: tabular-nums; font-weight: 600; }
   min-width: 720px;
 }
 
-.timeline-backlog {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--gridline);
-}
-.backlog-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
-}
-.backlog-chip { border: 1.5px dashed var(--text-muted); opacity: 0.85; cursor: default; }
 .timeline-axis {
   position: relative;
   height: 24px;

@@ -14,6 +14,7 @@
     neu: "Neu",
     priorisiert: "Priorisiert",
     in_umsetzung: "In Umsetzung",
+    umgesetzt: "Umgesetzt",
     nicht_umgesetzt: "Nicht umgesetzt",
   };
 
@@ -67,7 +68,8 @@
       development_time: uc.development_time,
       process_criticality: uc.process_criticality,
       process_dependency: uc.process_dependency,
-      golive_date: uc.golive_date,
+      start_date: uc.start_date,
+      pp_key: uc.pp_key || "",
       depends_on: uc.depends_on,
       ...overrides,
     };
@@ -330,6 +332,7 @@
     container.title = "Klicken zum Bearbeiten";
     container.onclick = (e) => {
       if (e.target.closest("select, textarea, input, button")) return; // ignore bubbled clicks from controls already inside
+      if (e.target.closest("a")) return; // a link inside (e.g. PP ticket) opens normally instead of editing
       let saving = false;
       const input = document.createElement("input");
       input.type = "text";
@@ -467,6 +470,8 @@
     document.title = uc.name;
     el("uc-name").textContent = uc.name;
     attachInputEdit(el("uc-name"), { fieldKey: "name", value: uc.name });
+    el("uc-pp-link").replaceChildren(Common.ppLink(uc));
+    attachInputEdit(el("uc-pp-link"), { fieldKey: "pp_key", value: uc.pp_key || "" });
     el("uc-idea-initiator").textContent = uc.idea_initiator;
     attachInputEdit(el("uc-idea-initiator"), { fieldKey: "idea_initiator", value: uc.idea_initiator });
 
@@ -544,21 +549,12 @@
     priorityChip.textContent = uc.priority;
     el("uc-priority").replaceChildren(priorityChip);
 
-    const startEl = el("uc-start");
-    if (uc.is_backlog) {
-      const backlogChip = document.createElement("span");
-      backlogChip.className = "chip backlog-chip";
-      const bg = categoryColor(uc.use_category, options.use_category);
-      backlogChip.style.background = bg;
-      backlogChip.style.color = textColorFor(bg);
-      backlogChip.textContent = "Backlog";
-      startEl.replaceChildren(backlogChip);
-    } else {
-      startEl.textContent = formatDate(uc.start_date);
-    }
+    el("uc-start").textContent = formatDate(uc.start_date);
+    attachDateEdit(el("uc-start"), { fieldKey: "start_date", value: uc.start_date });
 
+    // Derived (start + Entwicklungsdauer), not editable on its own.
     el("uc-golive").textContent = formatDate(uc.golive_date);
-    attachDateEdit(el("uc-golive"), { fieldKey: "golive_date", value: uc.golive_date });
+    el("uc-golive").title = "Berechnet: Start + Entwicklungsdauer";
 
     for (const [containerId, fieldKey, text] of [
       ["uc-description", "description", uc.description],
